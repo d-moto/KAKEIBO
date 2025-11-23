@@ -24,10 +24,12 @@ def main(page: ft.Page):
     try:
         from views.dashboard import DashboardView
         from views.input_form import InputFormView
+        from views.settings import SettingsView
         
         # Define views
         dashboard = None
         input_form = None
+        settings_view = None
 
         def on_save_transaction():
             # Switch to dashboard
@@ -46,6 +48,7 @@ def main(page: ft.Page):
 
         dashboard = DashboardView(page, on_edit_click=on_edit_transaction)
         input_form = InputFormView(page, on_save=on_save_transaction)
+        settings_view = SettingsView(page)
 
         body_container = ft.Container(content=dashboard, expand=True)
 
@@ -61,6 +64,8 @@ def main(page: ft.Page):
                     initial_date = f"{dashboard.current_month}-01"
                     input_form = InputFormView(page, on_save=on_save_transaction, initial_date=initial_date)
                 body_container.content = input_form
+            elif index == 2:
+                body_container.content = settings_view
             body_container.update()
 
         rail = ft.NavigationRail(
@@ -79,6 +84,11 @@ def main(page: ft.Page):
                     icon=ft.icons.ADD_CIRCLE_OUTLINE, 
                     selected_icon=ft.icons.ADD_CIRCLE, 
                     label="Add"
+                ),
+                ft.NavigationRailDestination(
+                    icon=ft.icons.SETTINGS_OUTLINED, 
+                    selected_icon=ft.icons.SETTINGS, 
+                    label="Settings"
                 ),
             ],
             on_change=change_route,

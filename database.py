@@ -38,6 +38,13 @@ class Database:
                 type TEXT NOT NULL
             )
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
         
         # Check if categories exist, if not add defaults
         cursor.execute("SELECT count(*) FROM categories")
@@ -57,7 +64,27 @@ class Database:
                 ("Other", "Expense"),
             ]
             cursor.executemany("INSERT INTO categories (name, type) VALUES (?, ?)", default_categories)
+
+        # Initialize default settings
+        cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", ("csv_encoding", "Shift-JIS"))
             
+        conn.commit()
+        conn.close()
+
+    def get_setting(self, key: str, default: str = None) -> str:
+        """Get a setting value."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row else default
+
+    def set_setting(self, key: str, value: str):
+        """Set a setting value."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
         conn.commit()
         conn.close()
 

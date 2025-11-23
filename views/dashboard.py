@@ -3,6 +3,8 @@ from database import Database
 import traceback
 from datetime import datetime
 
+import csv
+
 class DashboardView(ft.UserControl):
     def __init__(self, page: ft.Page, on_edit_click=None):
         super().__init__()
@@ -12,6 +14,9 @@ class DashboardView(ft.UserControl):
         self.current_month = datetime.now().strftime("%Y-%m")
 
     def build(self):
+        self.file_picker = ft.FilePicker(on_result=self.export_csv)
+        # self.page.overlay.append(self.file_picker) # Removed from overlay
+
         self.balance_text = ft.Text(
             "¥0", 
             size=40, 
@@ -52,6 +57,7 @@ class DashboardView(ft.UserControl):
         return ft.Container(
             content=ft.Row(
                 controls=[
+                    self.file_picker, # Add FilePicker to the tree
                     # Left side: Transaction List
                     ft.Container(
                         content=ft.Column(
@@ -63,6 +69,11 @@ class DashboardView(ft.UserControl):
                                         ft.IconButton(icon=ft.icons.CHEVRON_LEFT, on_click=self.prev_month),
                                         self.month_text,
                                         ft.IconButton(icon=ft.icons.CHEVRON_RIGHT, on_click=self.next_month),
+                                        ft.IconButton(
+                                            icon=ft.icons.DOWNLOAD, 
+                                            tooltip="Export CSV", 
+                                            on_click=lambda _: self.file_picker.save_file(allowed_extensions=["csv"], file_name=f"kakeibo_{self.current_month}.csv")
+                                        ),
                                     ],
                                     alignment=ft.MainAxisAlignment.CENTER,
                                 ),
@@ -103,6 +114,25 @@ class DashboardView(ft.UserControl):
 
     def did_mount(self):
         self.load_data()
+
+    def export_csv(self, e: ft.FilePickerResultEvent):
+        if e.path:
+            try:
+                encoding = self.db.get_setting("csv_encoding", "Shift-JIS")
+                transactions = self.db.get_transactions(self.current_month)
+                with open(e.path, 'w', newline='', encoding=encoding, errors='replace') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['ID', 'Date', 'Type', 'Category', 'Amount', 'Note'])
+                    for t in transactions:
+                        writer.writerow([t['id'], t['date'], t['type'], t['category'], t['amount'], t['note']])
+                
+                self.page.snack_bar = ft.SnackBar(ft.Text(f"Exported to {e.path} (Encoding: {encoding})"))
+                self.page.snack_bar.open = True
+                self.page.update()
+            except Exception as ex:
+                self.page.snack_bar = ft.SnackBar(ft.Text(f"Error exporting CSV: {ex}"))
+                self.page.snack_bar.open = True
+                self.page.update()
 
     def prev_month(self, e):
         year, month = map(int, self.current_month.split('-'))
