@@ -1,0 +1,10 @@
+[project]
+name = "kakeibo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "flet==0.24.1",
+    "pyinstaller>=6.16.0",
+]
