@@ -35,14 +35,22 @@ class InputFormView(ft.UserControl):
             ],
             width=200,
             border_color=ft.colors.WHITE54,
+            on_change=self.on_type_change,
         )
 
-        self.category_input = ft.TextField(
-            label="Category", 
-            hint_text="e.g. Salary, Food",
+        self.category_dropdown = ft.Dropdown(
+            label="Category",
+            width=200,
             border_color=ft.colors.WHITE54,
         )
-        
+
+        self.add_category_btn = ft.IconButton(
+            icon=ft.icons.ADD,
+            icon_color=ft.colors.GREEN_400,
+            tooltip="Add Category",
+            on_click=self.show_add_category_dialog
+        )
+
         self.amount_input = ft.TextField(
             label="Amount", 
             keyboard_type=ft.KeyboardType.NUMBER,
@@ -60,14 +68,15 @@ class InputFormView(ft.UserControl):
             self.date_picker.value = datetime.strptime(self.transaction['date'], "%Y-%m-%d")
             self.date_button.text = self.transaction['date']
             self.type_dropdown.value = self.transaction['type']
-            self.category_input.value = self.transaction['category']
             self.amount_input.value = str(self.transaction['amount'])
             self.note_input.value = self.transaction['note']
+            # Load categories for the selected type and set value
+            self.load_categories(self.transaction['type'])
+            self.category_dropdown.value = self.transaction['category']
         else:
             # Use initial_date if provided, otherwise today
             if self.initial_date:
                 self.date_button.text = self.initial_date
-                # Try to set date picker value if valid date
                 try:
                     self.date_picker.value = datetime.strptime(self.initial_date, "%Y-%m-%d")
                 except:
@@ -75,6 +84,7 @@ class InputFormView(ft.UserControl):
             else:
                 self.date_button.text = datetime.now().strftime("%Y-%m-%d")
             self.type_dropdown.value = "Expense"
+            self.load_categories("Expense")
 
         return ft.Container(
             content=ft.Column(
@@ -83,7 +93,7 @@ class InputFormView(ft.UserControl):
                     ft.Divider(),
                     self.date_button,
                     self.type_dropdown,
-                    self.category_input,
+                    ft.Row([self.category_dropdown, self.add_category_btn], alignment=ft.MainAxisAlignment.CENTER),
                     self.amount_input,
                     self.note_input,
                     ft.ElevatedButton(
@@ -109,6 +119,46 @@ class InputFormView(ft.UserControl):
             )
         )
 
+    def on_type_change(self, e):
+        self.load_categories(self.type_dropdown.value)
+        self.category_dropdown.value = None
+        self.category_dropdown.update()
+
+    def load_categories(self, type_filter):
+        categories = self.db.get_categories(type_filter)
+        self.category_dropdown.options = [ft.dropdown.Option(c['name']) for c in categories]
+        # self.category_dropdown.update() # Cannot update here as it might not be in tree yet
+
+    def show_add_category_dialog(self, e):
+        def close_dlg(e):
+            self.page.dialog.open = False
+            self.page.update()
+
+        def add_category(e):
+            name = new_category_name.value
+            if name:
+                self.db.add_category(name, self.type_dropdown.value)
+                self.load_categories(self.type_dropdown.value)
+                self.category_dropdown.value = name
+                self.category_dropdown.update()
+                close_dlg(e)
+
+        new_category_name = ft.TextField(label="New Category Name", autofocus=True)
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Add Category"),
+            content=new_category_name,
+            actions=[
+                ft.TextButton("Cancel", on_click=close_dlg),
+                ft.TextButton("Add", on_click=add_category),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.dialog = dlg
+        dlg.open = True
+        self.page.update()
+
     def change_date(self, e):
         self.date_button.text = self.date_picker.value.strftime("%Y-%m-%d")
         self.date_button.update()
@@ -117,7 +167,7 @@ class InputFormView(ft.UserControl):
         try:
             date = self.date_button.text
             type_ = self.type_dropdown.value
-            category = self.category_input.value
+            category = self.category_dropdown.value
             amount = int(self.amount_input.value)
             note = self.note_input.value
 
@@ -139,7 +189,6 @@ class InputFormView(ft.UserControl):
 
             # Clear form if adding new
             if not self.transaction:
-                self.category_input.value = ""
                 self.amount_input.value = ""
                 self.note_input.value = ""
                 self.update()

@@ -30,6 +30,34 @@ class Database:
                 note TEXT
             )
         """)
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL
+            )
+        """)
+        
+        # Check if categories exist, if not add defaults
+        cursor.execute("SELECT count(*) FROM categories")
+        if cursor.fetchone()[0] == 0:
+            default_categories = [
+                ("Salary", "Income"),
+                ("Bonus", "Income"),
+                ("Other", "Income"),
+                ("Food", "Expense"),
+                ("Transport", "Expense"),
+                ("Rent", "Expense"),
+                ("Utilities", "Expense"),
+                ("Entertainment", "Expense"),
+                ("Shopping", "Expense"),
+                ("Healthcare", "Expense"),
+                ("Education", "Expense"),
+                ("Other", "Expense"),
+            ]
+            cursor.executemany("INSERT INTO categories (name, type) VALUES (?, ?)", default_categories)
+            
         conn.commit()
         conn.close()
 
@@ -97,5 +125,36 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
+        conn.commit()
+        conn.close()
+
+    def get_categories(self, type_filter: str = None) -> List[Dict]:
+        """Get categories, optionally filtered by type (Income/Expense)."""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        if type_filter:
+            cursor.execute("SELECT * FROM categories WHERE type = ?", (type_filter,))
+        else:
+            cursor.execute("SELECT * FROM categories")
+            
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def add_category(self, name: str, type: str):
+        """Add a new category."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO categories (name, type) VALUES (?, ?)", (name, type))
+        conn.commit()
+        conn.close()
+
+    def delete_category(self, category_id: int):
+        """Delete a category."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
         conn.commit()
         conn.close()
