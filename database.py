@@ -45,6 +45,25 @@ class Database:
                 value TEXT
             )
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS budgets (
+                month TEXT PRIMARY KEY,
+                amount INTEGER
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS fixed_costs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                category TEXT NOT NULL,
+                type TEXT NOT NULL,
+                day_of_month INTEGER NOT NULL,
+                last_added_month TEXT
+            )
+        """)
         
         # Check if categories exist, if not add defaults
         cursor.execute("SELECT count(*) FROM categories")
@@ -68,6 +87,109 @@ class Database:
         # Initialize default settings
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", ("csv_encoding", "Shift-JIS"))
             
+        conn.commit()
+        conn.close()
+
+    def add_fixed_cost(self, name: str, amount: int, category: str, type: str, day_of_month: int):
+        """Add a new fixed cost."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO fixed_costs (name, amount, category, type, day_of_month)
+            VALUES (?, ?, ?, ?, ?)
+        """, (name, amount, category, type, day_of_month))
+        conn.commit()
+        conn.close()
+
+    def get_fixed_costs(self) -> List[Dict]:
+        """Get all fixed costs."""
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM fixed_costs")
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def delete_fixed_cost(self, fixed_cost_id: int):
+        """Delete a fixed cost."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM fixed_costs WHERE id = ?", (fixed_cost_id,))
+        conn.commit()
+        conn.close()
+
+    def update_fixed_cost_last_added(self, fixed_cost_id: int, month: str):
+        """Update the last added month for a fixed cost."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE fixed_costs SET last_added_month = ? WHERE id = ?", (month, fixed_cost_id))
+        conn.commit()
+        conn.close()
+
+    def process_fixed_costs(self) -> int:
+        """Check and auto-add fixed costs. Returns number of added transactions."""
+        from datetime import datetime
+        
+        fixed_costs = self.get_fixed_costs()
+        current_date = datetime.now()
+        current_month = current_date.strftime("%Y-%m")
+        today_day = current_date.day
+        
+        added_count = 0
+        for fc in fixed_costs:
+            # If never added (None) or added in a previous month
+            if fc['last_added_month'] != current_month:
+                # If today is on or after the scheduled day
+                if today_day >= fc['day_of_month']:
+                    # Add transaction
+                    date_str = f"{current_month}-{fc['day_of_month']:02d}"
+                    self.add_transaction(date_str, fc['type'], fc['category'], fc['amount'], f"Fixed Cost: {fc['name']}")
+                    
+                    # Update last added month
+                    self.update_fixed_cost_last_added(fc['id'], current_month)
+                    added_count += 1
+        return added_count
+
+    def get_monthly_summary(self, month: str) -> dict:
+        """Get summary of income and expenses for a specific month for Money Flow."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # Get Income by Category
+        cursor.execute("SELECT category, SUM(amount) FROM transactions WHERE type='Income' AND strftime('%Y-%m', date) = ? GROUP BY category", (month,))
+        income_data = [{'category': row[0], 'amount': row[1]} for row in cursor.fetchall()]
+        
+        # Get Expenses by Category
+        cursor.execute("SELECT category, SUM(amount) FROM transactions WHERE type='Expense' AND strftime('%Y-%m', date) = ? GROUP BY category", (month,))
+        expense_data = [{'category': row[0], 'amount': row[1]} for row in cursor.fetchall()]
+        
+        conn.close()
+        
+        total_income = sum(item['amount'] for item in income_data)
+        total_expenses = sum(item['amount'] for item in expense_data)
+        
+        return {
+            'income': income_data,
+            'expenses': expense_data,
+            'total_income': total_income,
+            'total_expenses': total_expenses
+        }
+
+    def get_budget(self, month: str) -> int:
+        """Get budget for a specific month."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT amount FROM budgets WHERE month = ?", (month,))
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row else 0
+
+    def set_budget(self, month: str, amount: int):
+        """Set budget for a specific month."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO budgets (month, amount) VALUES (?, ?)", (month, amount))
         conn.commit()
         conn.close()
 

@@ -2,7 +2,6 @@ import flet as ft
 from database import Database
 import traceback
 from datetime import datetime
-
 import csv
 
 class DashboardView(ft.UserControl):
@@ -15,8 +14,7 @@ class DashboardView(ft.UserControl):
 
     def build(self):
         self.file_picker = ft.FilePicker(on_result=self.export_csv)
-        # self.page.overlay.append(self.file_picker) # Removed from overlay
-
+        
         self.balance_text = ft.Text(
             "¥0", 
             size=40, 
@@ -29,6 +27,19 @@ class DashboardView(ft.UserControl):
             size=20,
             weight=ft.FontWeight.BOLD,
             color=ft.colors.WHITE
+        )
+
+        self.budget_text = ft.Text(
+            "Budget: ¥0 / ¥0",
+            size=14,
+            color=ft.colors.WHITE70
+        )
+
+        self.budget_progress = ft.ProgressBar(
+            width=300,
+            color=ft.colors.GREEN_400,
+            bgcolor=ft.colors.WHITE24,
+            value=0
         )
 
         self.transactions_list = ft.ListView(
@@ -51,13 +62,10 @@ class DashboardView(ft.UserControl):
             padding=20
         )
 
-        # Do not call load_data() here, as the control is not mounted yet.
-        # self.load_data() 
-
         return ft.Container(
             content=ft.Row(
                 controls=[
-                    self.file_picker, # Add FilePicker to the tree
+                    self.file_picker,
                     # Left side: Transaction List
                     ft.Container(
                         content=ft.Column(
@@ -74,15 +82,24 @@ class DashboardView(ft.UserControl):
                                             tooltip="Export CSV", 
                                             on_click=lambda _: self.file_picker.save_file(allowed_extensions=["csv"], file_name=f"kakeibo_{self.current_month}.csv")
                                         ),
+                                        ft.IconButton(
+                                            icon=ft.icons.EDIT,
+                                            tooltip="Set Budget",
+                                            on_click=self.show_budget_dialog
+                                        )
                                     ],
                                     alignment=ft.MainAxisAlignment.CENTER,
                                 ),
+                                ft.Column([
+                                    self.budget_text,
+                                    self.budget_progress
+                                ], spacing=5, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                                 ft.Text("Recent Transactions", size=20, weight=ft.FontWeight.W_500, color=ft.colors.WHITE70),
                                 self.transactions_list
                             ],
                             spacing=20,
                         ),
-                        expand=2, # Take up 2/3 of space
+                        expand=2, 
                         padding=30,
                     ),
                     # Right side: Chart
@@ -95,7 +112,7 @@ class DashboardView(ft.UserControl):
                             spacing=20,
                             alignment=ft.MainAxisAlignment.START,
                         ),
-                        expand=1, # Take up 1/3 of space
+                        expand=1, 
                         padding=30,
                         bgcolor=ft.colors.WHITE10,
                         border_radius=ft.border_radius.only(top_left=20, bottom_left=20),
@@ -115,6 +132,37 @@ class DashboardView(ft.UserControl):
     def did_mount(self):
         self.load_data()
 
+    def show_budget_dialog(self, e):
+        def close_dlg(e):
+            self.page.dialog.open = False
+            self.page.update()
+
+        def save_budget(e):
+            try:
+                amount = int(budget_input.value)
+                self.db.set_budget(self.current_month, amount)
+                self.load_data()
+                close_dlg(e)
+            except ValueError:
+                pass
+
+        current_budget = self.db.get_budget(self.current_month)
+        budget_input = ft.TextField(label="Monthly Budget", value=str(current_budget), keyboard_type=ft.KeyboardType.NUMBER, autofocus=True)
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(f"Set Budget for {self.current_month}"),
+            content=budget_input,
+            actions=[
+                ft.TextButton("Cancel", on_click=close_dlg),
+                ft.TextButton("Save", on_click=save_budget),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.dialog = dlg
+        dlg.open = True
+        self.page.update()
+
     def export_csv(self, e: ft.FilePickerResultEvent):
         if e.path:
             try:
@@ -126,12 +174,14 @@ class DashboardView(ft.UserControl):
                     for t in transactions:
                         writer.writerow([t['id'], t['date'], t['type'], t['category'], t['amount'], t['note']])
                 
-                self.page.snack_bar = ft.SnackBar(ft.Text(f"Exported to {e.path} (Encoding: {encoding})"))
-                self.page.snack_bar.open = True
+                snack = ft.SnackBar(ft.Text(f"Exported to {e.path} (Encoding: {encoding})"))
+                self.page.overlay.append(snack)
+                snack.open = True
                 self.page.update()
             except Exception as ex:
-                self.page.snack_bar = ft.SnackBar(ft.Text(f"Error exporting CSV: {ex}"))
-                self.page.snack_bar.open = True
+                snack = ft.SnackBar(ft.Text(f"Error exporting CSV: {ex}"))
+                self.page.overlay.append(snack)
+                snack.open = True
                 self.page.update()
 
     def prev_month(self, e):
@@ -142,8 +192,8 @@ class DashboardView(ft.UserControl):
             year -= 1
         self.current_month = f"{year}-{month:02d}"
         self.month_text.value = self.current_month
-        self.month_text.update()
         self.load_data()
+        self.update()
 
     def next_month(self, e):
         year, month = map(int, self.current_month.split('-'))
@@ -153,137 +203,121 @@ class DashboardView(ft.UserControl):
             year += 1
         self.current_month = f"{year}-{month:02d}"
         self.month_text.value = self.current_month
-        self.month_text.update()
         self.load_data()
+        self.update()
 
     def _build_header(self):
-        return ft.Container(
-            content=ft.Column(
-                [
-                    ft.Text("Total Balance", size=16, color=ft.colors.WHITE54),
-                    self.balance_text,
-                ],
-                spacing=5
-            ),
-            padding=20,
-            border_radius=15,
-            bgcolor=ft.colors.WHITE10,
+        return ft.Row(
+            [
+                ft.Icon(ft.icons.ACCOUNT_BALANCE_WALLET, size=40, color=ft.colors.GREEN_400),
+                ft.Column(
+                    [
+                        ft.Text("Total Balance", size=14, color=ft.colors.WHITE70),
+                        self.balance_text
+                    ],
+                    spacing=0
+                )
+            ],
+            alignment=ft.MainAxisAlignment.START,
         )
 
     def load_data(self):
         try:
+            transactions = self.db.get_transactions(self.current_month)
             balance = self.db.get_balance(self.current_month)
+            
+            # Calculate total expenses for budget
+            total_expenses = sum(t['amount'] for t in transactions if t['type'] == 'Expense')
+            budget = self.db.get_budget(self.current_month)
+            
             self.balance_text.value = f"¥{balance:,}"
             
-            transactions = self.db.get_transactions(self.current_month)
-            self.transactions_list.controls = []
-            
-            # Calculate totals for chart
-            category_totals = {}
-            for t in transactions:
-                if t['type'] == 'Expense':
-                    cat = t['category']
-                    amount = t['amount']
-                    category_totals[cat] = category_totals.get(cat, 0) + amount
-
-            # Update Chart
-            if category_totals:
-                self.chart.sections = []
-                colors = [ft.colors.BLUE, ft.colors.RED, ft.colors.GREEN, ft.colors.YELLOW, ft.colors.PURPLE, ft.colors.ORANGE, ft.colors.TEAL, ft.colors.PINK]
-                for i, (cat, amount) in enumerate(category_totals.items()):
-                    self.chart.sections.append(
-                        ft.PieChartSection(
-                            amount,
-                            title=f"{cat}\n¥{amount:,}",
-                            title_style=ft.TextStyle(size=12, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE),
-                            color=colors[i % len(colors)],
-                            radius=100,
-                        )
-                    )
-                self.chart_container.content = self.chart
+            # Update budget display
+            if budget > 0:
+                progress = min(total_expenses / budget, 1.0)
+                self.budget_progress.value = progress
+                self.budget_text.value = f"Expenses: ¥{total_expenses:,} / Budget: ¥{budget:,} ({int(progress*100)}%)"
+                if progress >= 1.0:
+                    self.budget_progress.color = ft.colors.RED_400
+                elif progress >= 0.8:
+                    self.budget_progress.color = ft.colors.ORANGE_400
+                else:
+                    self.budget_progress.color = ft.colors.GREEN_400
             else:
-                self.chart_container.content = ft.Container(
-                    content=ft.Text("No expenses for this month", color=ft.colors.WHITE54),
-                    alignment=ft.alignment.center,
-                    expand=True
-                )
+                self.budget_progress.value = 0
+                self.budget_text.value = f"Expenses: ¥{total_expenses:,} (No Budget Set)"
+                self.budget_progress.color = ft.colors.GREY_400
 
+            self.transactions_list.controls.clear()
+            
             for t in transactions:
-                icon = ft.icons.ARROW_DOWNWARD if t['type'] == 'Expense' else ft.icons.ARROW_UPWARD
-                color = ft.colors.RED_400 if t['type'] == 'Expense' else ft.colors.GREEN_400
+                icon = ft.icons.ADD_CIRCLE if t['type'] == 'Income' else ft.icons.REMOVE_CIRCLE
+                color = ft.colors.GREEN_400 if t['type'] == 'Income' else ft.colors.RED_400
                 
-                item = ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Row([
-                                ft.Container(
-                                    content=ft.Icon(icon, color=color),
-                                    padding=10,
-                                    bgcolor=ft.colors.WHITE10,
-                                    border_radius=10,
-                                ),
-                                ft.Column(
-                                    [
-                                        ft.Text(t['category'], size=16, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE),
+                self.transactions_list.controls.append(
+                    ft.Container(
+                        content=ft.Row(
+                            [
+                                ft.Row([
+                                    ft.Icon(icon, color=color),
+                                    ft.Column([
+                                        ft.Text(t['category'], weight=ft.FontWeight.BOLD),
                                         ft.Text(t['date'], size=12, color=ft.colors.WHITE54),
-                                    ],
-                                    spacing=2,
-                                ),
-                            ]),
-                            ft.Row([
-                                ft.Text(
-                                    f"{'-' if t['type'] == 'Expense' else '+'}{t['amount']:,}",
-                                    size=16,
-                                    weight=ft.FontWeight.BOLD,
-                                    color=color
-                                ),
-                                ft.IconButton(
-                                    icon=ft.icons.EDIT,
-                                    icon_color=ft.colors.BLUE_400,
-                                    tooltip="Edit",
-                                    on_click=lambda e, t=t: self.edit_transaction(t)
-                                ),
-                                ft.IconButton(
-                                    icon=ft.icons.DELETE,
-                                    icon_color=ft.colors.RED_400,
-                                    tooltip="Delete",
-                                    on_click=lambda e, t=t: self.delete_transaction(t)
-                                ),
-                            ])
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
-                    padding=15,
-                    border_radius=15,
-                    bgcolor=ft.colors.GREY_900,
+                                    ], spacing=2),
+                                ]),
+                                ft.Row([
+                                    ft.Text(f"¥{t['amount']:,}", size=16, weight=ft.FontWeight.BOLD),
+                                    ft.IconButton(
+                                        icon=ft.icons.EDIT, 
+                                        icon_size=20, 
+                                        tooltip="Edit",
+                                        on_click=lambda e, t=t: self.on_edit_click(t) if self.on_edit_click else None
+                                    ),
+                                    ft.IconButton(
+                                        icon=ft.icons.DELETE, 
+                                        icon_size=20, 
+                                        icon_color=ft.colors.RED_400,
+                                        tooltip="Delete",
+                                        on_click=lambda e, t_id=t['id']: self.delete_transaction(t_id)
+                                    ),
+                                ])
+                            ],
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        ),
+                        padding=10,
+                        bgcolor=ft.colors.WHITE10,
+                        border_radius=10,
+                    )
                 )
-                self.transactions_list.controls.append(item)
+            
+            # Update Chart
+            self.update_chart(transactions)
             
             self.update()
-        except Exception as e:
+        except Exception:
             traceback.print_exc()
 
-    def edit_transaction(self, transaction):
-        # This will be handled by the main app routing
-        if hasattr(self, 'on_edit_click'):
-            self.on_edit_click(transaction)
-
-    def delete_transaction(self, transaction):
-        def close_dlg(e):
+    def delete_transaction(self, transaction_id):
+        def confirm_delete(e):
+            self.db.delete_transaction(transaction_id)
             self.page.dialog.open = False
             self.page.update()
-
-        def confirm_delete(e):
-            self.db.delete_transaction(transaction['id'])
-            close_dlg(e)
             self.load_data()
+            snack = ft.SnackBar(ft.Text("Transaction deleted"))
+            self.page.overlay.append(snack)
+            snack.open = True
+            self.page.update()
+
+        def cancel_delete(e):
+            self.page.dialog.open = False
+            self.page.update()
 
         dlg = ft.AlertDialog(
             modal=True,
             title=ft.Text("Confirm Delete"),
-            content=ft.Text(f"Are you sure you want to delete this transaction?\n\n{transaction['category']}: {transaction['amount']}"),
+            content=ft.Text("Are you sure you want to delete this transaction?"),
             actions=[
-                ft.TextButton("Cancel", on_click=close_dlg),
+                ft.TextButton("Cancel", on_click=cancel_delete),
                 ft.TextButton("Delete", on_click=confirm_delete, style=ft.ButtonStyle(color=ft.colors.RED)),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
@@ -291,3 +325,36 @@ class DashboardView(ft.UserControl):
         self.page.dialog = dlg
         dlg.open = True
         self.page.update()
+
+    def update_chart(self, transactions):
+        expenses = [t for t in transactions if t['type'] == 'Expense']
+        if not expenses:
+            # Show empty state or placeholder
+            self.chart.sections = []
+            self.chart_container.content = ft.Text("No expenses for this month", color=ft.colors.WHITE54)
+            return
+
+        # Restore chart if it was replaced by text
+        self.chart_container.content = self.chart
+
+        category_totals = {}
+        for t in expenses:
+            cat = t['category']
+            category_totals[cat] = category_totals.get(cat, 0) + t['amount']
+        
+        sections = []
+        # Simple color palette
+        colors = [ft.colors.BLUE, ft.colors.RED, ft.colors.GREEN, ft.colors.YELLOW, ft.colors.PURPLE, ft.colors.ORANGE, ft.colors.TEAL, ft.colors.PINK]
+        
+        for i, (cat, amount) in enumerate(category_totals.items()):
+            sections.append(
+                ft.PieChartSection(
+                    amount,
+                    title=f"{cat}\n¥{amount:,}",
+                    color=colors[i % len(colors)],
+                    radius=100,
+                    title_style=ft.TextStyle(size=12, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE)
+                )
+            )
+        
+        self.chart.sections = sections
