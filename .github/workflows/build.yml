@@ -27,8 +27,9 @@ jobs:
       run: |
         pyinstaller Kakeibo.spec
 
-    - name: Setup Inno Setup
-      uses: miniscruff/setup-inno-setup@v1
+    - name: Install Inno Setup
+      run: |
+        choco install innosetup
 
     - name: Build Installer
       run: |
