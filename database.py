@@ -44,21 +44,43 @@ class Database:
         conn.commit()
         conn.close()
 
-    def get_transactions(self) -> List[Dict]:
-        """Get all transactions ordered by date desc."""
+    def update_transaction(self, transaction_id: int, date: str, type: str, category: str, amount: int, note: str = ""):
+        """Update an existing transaction."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE transactions 
+            SET date = ?, type = ?, category = ?, amount = ?, note = ?
+            WHERE id = ?
+        """, (date, type, category, amount, note, transaction_id))
+        conn.commit()
+        conn.close()
+
+    def get_transactions(self, month: str = None) -> List[Dict]:
+        """Get transactions, optionally filtered by month (YYYY-MM)."""
         conn = self.get_connection()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM transactions ORDER BY date DESC, id DESC")
+        
+        if month:
+            cursor.execute("SELECT * FROM transactions WHERE date LIKE ? ORDER BY date DESC, id DESC", (f"{month}%",))
+        else:
+            cursor.execute("SELECT * FROM transactions ORDER BY date DESC, id DESC")
+            
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
 
-    def get_balance(self) -> int:
-        """Calculate current balance."""
+    def get_balance(self, month: str = None) -> int:
+        """Calculate balance, optionally filtered by month (YYYY-MM)."""
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT type, amount FROM transactions")
+        
+        if month:
+            cursor.execute("SELECT type, amount FROM transactions WHERE date LIKE ?", (f"{month}%",))
+        else:
+            cursor.execute("SELECT type, amount FROM transactions")
+            
         rows = cursor.fetchall()
         conn.close()
 

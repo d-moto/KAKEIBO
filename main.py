@@ -14,8 +14,8 @@ def main(page: ft.Page):
     logging.info("App started.")
     page.title = "KAKEIBO - Premium"
     page.theme_mode = ft.ThemeMode.DARK
-    page.window_width = 1000
-    page.window_height = 800
+    page.window.width = 1000
+    page.window.height = 800
     
     # Show initial loading state
     page.add(ft.Text("Initializing Application...", size=20, color="white"))
@@ -26,16 +26,25 @@ def main(page: ft.Page):
         from views.input_form import InputFormView
         
         # Define views
-        dashboard = DashboardView(page)
-        
+        dashboard = None
+        input_form = None
+
         def on_save_transaction():
-            # Refresh dashboard data when a new transaction is saved
-            dashboard.load_data()
             # Switch to dashboard
+            # Note: dashboard.load_data() will be called by dashboard.did_mount() when it's re-added
             rail.selected_index = 0
             change_route(None)
             page.update()
 
+        def on_edit_transaction(transaction):
+            # Switch to input form with transaction data
+            nonlocal input_form
+            input_form = InputFormView(page, on_save=on_save_transaction, transaction=transaction)
+            rail.selected_index = 1
+            change_route(None)
+            page.update()
+
+        dashboard = DashboardView(page, on_edit_click=on_edit_transaction)
         input_form = InputFormView(page, on_save=on_save_transaction)
 
         body_container = ft.Container(content=dashboard, expand=True)
@@ -45,6 +54,12 @@ def main(page: ft.Page):
             if index == 0:
                 body_container.content = dashboard
             elif index == 1:
+                # Reset input form when switching manually (add mode)
+                if e is not None: # e is None when called programmatically for edit
+                    nonlocal input_form
+                    # Pass the currently selected month from dashboard to pre-fill the date
+                    initial_date = f"{dashboard.current_month}-01"
+                    input_form = InputFormView(page, on_save=on_save_transaction, initial_date=initial_date)
                 body_container.content = input_form
             body_container.update()
 

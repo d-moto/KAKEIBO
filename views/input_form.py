@@ -3,10 +3,12 @@ from database import Database
 from datetime import datetime
 
 class InputFormView(ft.UserControl):
-    def __init__(self, page: ft.Page, on_save):
+    def __init__(self, page: ft.Page, on_save=None, transaction=None, initial_date=None):
         super().__init__()
         self.page = page
         self.on_save = on_save
+        self.transaction = transaction
+        self.initial_date = initial_date
         self.db = Database()
 
     def build(self):
@@ -16,70 +18,87 @@ class InputFormView(ft.UserControl):
         self.page.overlay.append(self.date_picker)
 
         self.date_button = ft.ElevatedButton(
-            "Pick Date",
+            "Select Date",
             icon=ft.icons.CALENDAR_MONTH,
             on_click=lambda _: self.date_picker.pick_date(),
             style=ft.ButtonStyle(
                 color=ft.colors.WHITE,
-                bgcolor=ft.colors.WHITE10,
+                bgcolor=ft.colors.BLUE_GREY_700,
             )
         )
-        self.selected_date_text = ft.Text(datetime.now().strftime("%Y-%m-%d"), color=ft.colors.WHITE)
-
+        
         self.type_dropdown = ft.Dropdown(
             label="Type",
             options=[
                 ft.dropdown.Option("Income"),
                 ft.dropdown.Option("Expense"),
             ],
-            value="Expense",
-            border_color=ft.colors.WHITE24,
-            color=ft.colors.WHITE,
+            width=200,
+            border_color=ft.colors.WHITE54,
         )
 
-        self.category_field = ft.TextField(
+        self.category_input = ft.TextField(
             label="Category", 
-            hint_text="e.g. Food, Salary",
-            border_color=ft.colors.WHITE24,
-            color=ft.colors.WHITE,
+            hint_text="e.g. Salary, Food",
+            border_color=ft.colors.WHITE54,
         )
         
-        self.amount_field = ft.TextField(
+        self.amount_input = ft.TextField(
             label="Amount", 
             keyboard_type=ft.KeyboardType.NUMBER,
-            border_color=ft.colors.WHITE24,
-            color=ft.colors.WHITE,
+            border_color=ft.colors.WHITE54,
         )
         
-        self.note_field = ft.TextField(
+        self.note_input = ft.TextField(
             label="Note",
-            border_color=ft.colors.WHITE24,
-            color=ft.colors.WHITE,
+            multiline=True,
+            border_color=ft.colors.WHITE54,
         )
+
+        # Pre-fill data if editing
+        if self.transaction:
+            self.date_picker.value = datetime.strptime(self.transaction['date'], "%Y-%m-%d")
+            self.date_button.text = self.transaction['date']
+            self.type_dropdown.value = self.transaction['type']
+            self.category_input.value = self.transaction['category']
+            self.amount_input.value = str(self.transaction['amount'])
+            self.note_input.value = self.transaction['note']
+        else:
+            # Use initial_date if provided, otherwise today
+            if self.initial_date:
+                self.date_button.text = self.initial_date
+                # Try to set date picker value if valid date
+                try:
+                    self.date_picker.value = datetime.strptime(self.initial_date, "%Y-%m-%d")
+                except:
+                    pass
+            else:
+                self.date_button.text = datetime.now().strftime("%Y-%m-%d")
+            self.type_dropdown.value = "Expense"
 
         return ft.Container(
             content=ft.Column(
                 [
-                    ft.Text("Add Transaction", size=24, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE),
-                    ft.Divider(color=ft.colors.WHITE24),
-                    ft.Row([self.date_button, self.selected_date_text], alignment=ft.MainAxisAlignment.START),
+                    ft.Text("Edit Transaction" if self.transaction else "Add Transaction", size=24, weight=ft.FontWeight.BOLD),
+                    ft.Divider(),
+                    self.date_button,
                     self.type_dropdown,
-                    self.category_field,
-                    self.amount_field,
-                    self.note_field,
-                    ft.Container(height=20),
+                    self.category_input,
+                    self.amount_input,
+                    self.note_input,
                     ft.ElevatedButton(
-                        "Save Transaction",
+                        "Update Transaction" if self.transaction else "Save Transaction", 
                         on_click=self.save_transaction,
                         style=ft.ButtonStyle(
-                            bgcolor=ft.colors.BLUE_600,
                             color=ft.colors.WHITE,
+                            bgcolor=ft.colors.GREEN_600,
                             padding=15,
                         ),
                         width=200,
                     )
                 ],
-                spacing=15,
+                spacing=20,
+                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             ),
             padding=30,
             expand=True,
@@ -91,36 +110,47 @@ class InputFormView(ft.UserControl):
         )
 
     def change_date(self, e):
-        if self.date_picker.value:
-            self.selected_date_text.value = self.date_picker.value.strftime("%Y-%m-%d")
-            self.selected_date_text.update()
+        self.date_button.text = self.date_picker.value.strftime("%Y-%m-%d")
+        self.date_button.update()
 
     def save_transaction(self, e):
-        if not self.amount_field.value:
-            self.amount_field.error_text = "Amount is required"
-            self.amount_field.update()
-            return
-        
         try:
-            amount = int(self.amount_field.value)
-        except ValueError:
-            self.amount_field.error_text = "Must be a number"
-            self.amount_field.update()
-            return
+            date = self.date_button.text
+            type_ = self.type_dropdown.value
+            category = self.category_input.value
+            amount = int(self.amount_input.value)
+            note = self.note_input.value
 
-        self.db.add_transaction(
-            date=self.selected_date_text.value,
-            type=self.type_dropdown.value,
-            category=self.category_field.value,
-            amount=amount,
-            note=self.note_field.value
-        )
-        
-        # Clear fields
-        self.amount_field.value = ""
-        self.category_field.value = ""
-        self.note_field.value = ""
-        self.update()
+            if not category or not amount:
+                self.page.snack_bar = ft.SnackBar(ft.Text("Please fill in all fields"))
+                self.page.snack_bar.open = True
+                self.page.update()
+                return
+
+            if self.transaction:
+                self.db.update_transaction(self.transaction['id'], date, type_, category, amount, note)
+                self.page.snack_bar = ft.SnackBar(ft.Text("Transaction updated!"))
+            else:
+                self.db.add_transaction(date, type_, category, amount, note)
+                self.page.snack_bar = ft.SnackBar(ft.Text("Transaction saved!"))
+            
+            self.page.snack_bar.open = True
+            self.page.update()
+
+            # Clear form if adding new
+            if not self.transaction:
+                self.category_input.value = ""
+                self.amount_input.value = ""
+                self.note_input.value = ""
+                self.update()
+
+            if self.on_save:
+                self.on_save()
+
+        except ValueError:
+            self.page.snack_bar = ft.SnackBar(ft.Text("Amount must be a number"))
+            self.page.snack_bar.open = True
+            self.page.update()
         
         if self.on_save:
             self.on_save()
