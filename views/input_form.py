@@ -63,6 +63,15 @@ class InputFormView(ft.UserControl):
             border_color=ft.colors.WHITE54,
         )
 
+        self.payment_method_dropdown = ft.Dropdown(
+            label="Payment Method",
+            width=200,
+            border_color=ft.colors.WHITE54,
+            options=[ft.dropdown.Option("Cash")],
+            value="Cash",
+            visible=False # Only visible for Expense
+        )
+
         # Pre-fill data if editing
         if self.transaction:
             self.date_picker.value = datetime.strptime(self.transaction['date'], "%Y-%m-%d")
@@ -73,6 +82,19 @@ class InputFormView(ft.UserControl):
             # Load categories for the selected type and set value
             self.load_categories(self.transaction['type'])
             self.category_dropdown.value = self.transaction['category']
+            
+            # Set payment method visibility and value
+            if self.transaction['type'] == 'Expense':
+                self.payment_method_dropdown.visible = True
+                self.load_payment_methods()
+                if self.transaction.get('credit_card_id'):
+                    self.payment_method_dropdown.value = f"card_{self.transaction['credit_card_id']}"
+                elif self.transaction.get('account_id'):
+                    self.payment_method_dropdown.value = f"acc_{self.transaction['account_id']}"
+                else:
+                    self.payment_method_dropdown.value = "Cash"
+            else:
+                self.payment_method_dropdown.visible = False
         else:
             # Use initial_date if provided, otherwise today
             if self.initial_date:
@@ -85,6 +107,8 @@ class InputFormView(ft.UserControl):
                 self.date_button.text = datetime.now().strftime("%Y-%m-%d")
             self.type_dropdown.value = "Expense"
             self.load_categories("Expense")
+            self.payment_method_dropdown.visible = True
+            self.load_payment_methods()
 
         return ft.Container(
             content=ft.Column(
@@ -95,6 +119,7 @@ class InputFormView(ft.UserControl):
                     self.type_dropdown,
                     ft.Row([self.category_dropdown, self.add_category_btn], alignment=ft.MainAxisAlignment.CENTER),
                     self.amount_input,
+                    self.payment_method_dropdown,
                     self.note_input,
                     ft.ElevatedButton(
                         "Update Transaction" if self.transaction else "Save Transaction", 
@@ -123,6 +148,29 @@ class InputFormView(ft.UserControl):
         self.load_categories(self.type_dropdown.value)
         self.category_dropdown.value = None
         self.category_dropdown.update()
+        
+        if self.type_dropdown.value == "Expense":
+            self.payment_method_dropdown.visible = True
+            self.load_payment_methods()
+        else:
+            self.payment_method_dropdown.visible = False
+        self.payment_method_dropdown.update()
+
+    def load_payment_methods(self):
+        options = [ft.dropdown.Option(key="Cash", text="Cash (Default)")]
+        
+        # Load Banks
+        accounts = self.db.get_accounts()
+        for acc in accounts:
+            options.append(ft.dropdown.Option(key=f"acc_{acc['id']}", text=f"{acc['name']} (¥{acc['balance']:,})"))
+            
+        # Load Credit Cards
+        cards = self.db.get_credit_cards()
+        for card in cards:
+            options.append(ft.dropdown.Option(key=f"card_{card['id']}", text=f"{card['name']} (Card)"))
+            
+        self.payment_method_dropdown.options = options
+        # self.payment_method_dropdown.update()
 
     def load_categories(self, type_filter):
         categories = self.db.get_categories(type_filter)
@@ -177,11 +225,26 @@ class InputFormView(ft.UserControl):
                 self.page.update()
                 return
 
+            account_id = None
+            credit_card_id = None
+            
+            if type_ == "Expense" and self.payment_method_dropdown.value != "Cash":
+                val = self.payment_method_dropdown.value
+                if val.startswith("acc_"):
+                    account_id = int(val.split("_")[1])
+                elif val.startswith("card_"):
+                    credit_card_id = int(val.split("_")[1])
+
             if self.transaction:
-                self.db.update_transaction(self.transaction['id'], date, type_, category, amount, note)
+                self.db.update_transaction(self.transaction['id'], date, type_, category, amount, note, account_id, credit_card_id)
                 self.page.snack_bar = ft.SnackBar(ft.Text("Transaction updated!"))
             else:
-                self.db.add_transaction(date, type_, category, amount, note)
+                self.db.add_transaction(date, type_, category, amount, note, account_id, credit_card_id)
+                
+                # Update account balance if bank account used
+                if account_id:
+                    self.db.update_account_balance(account_id, -amount)
+                
                 self.page.snack_bar = ft.SnackBar(ft.Text("Transaction saved!"))
             
             self.page.snack_bar.open = True

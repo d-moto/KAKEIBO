@@ -64,6 +64,45 @@ class Database:
                 last_added_month TEXT
             )
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS category_budgets (
+                category TEXT PRIMARY KEY,
+                amount INTEGER
+            )
+        """)
+        
+        # Accounts Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                balance INTEGER DEFAULT 0
+            )
+        """)
+
+        # Credit Cards Table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS credit_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                linked_account_id INTEGER,
+                withdrawal_day INTEGER,
+                FOREIGN KEY(linked_account_id) REFERENCES accounts(id)
+            )
+        """)
+
+        # Update transactions table to include account_id and credit_card_id if they don't exist
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN account_id INTEGER")
+        except Exception:
+            pass # Column likely exists
+            
+        try:
+            cursor.execute("ALTER TABLE transactions ADD COLUMN credit_card_id INTEGER")
+        except Exception:
+            pass # Column likely exists
         
         # Check if categories exist, if not add defaults
         cursor.execute("SELECT count(*) FROM categories")
@@ -191,6 +230,84 @@ class Database:
         cursor = conn.cursor()
         cursor.execute("INSERT OR REPLACE INTO budgets (month, amount) VALUES (?, ?)", (month, amount))
         conn.commit()
+        conn.commit()
+        conn.close()
+
+    def get_category_budgets(self) -> Dict[str, int]:
+        """Get all category budgets."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT category, amount FROM category_budgets")
+        rows = cursor.fetchall()
+        conn.close()
+        return {row[0]: row[1] for row in rows}
+
+    def set_category_budget(self, category: str, amount: int):
+        """Set budget for a specific category."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO category_budgets (category, amount) VALUES (?, ?)", (category, amount))
+        conn.commit()
+        conn.close()
+
+    # --- Account Methods ---
+    def add_account(self, name: str, type: str, initial_balance: int = 0):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO accounts (name, type, balance) VALUES (?, ?, ?)", (name, type, initial_balance))
+        conn.commit()
+        conn.close()
+
+    def get_accounts(self) -> List[Dict]:
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM accounts")
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def update_account_balance(self, account_id: int, amount: int):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", (amount, account_id))
+        conn.commit()
+        conn.close()
+
+    def delete_account(self, account_id: int):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM accounts WHERE id = ?", (account_id,))
+        conn.commit()
+        conn.close()
+
+    # --- Credit Card Methods ---
+    def add_credit_card(self, name: str, linked_account_id: int, withdrawal_day: int):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO credit_cards (name, linked_account_id, withdrawal_day) VALUES (?, ?, ?)", 
+                       (name, linked_account_id, withdrawal_day))
+        conn.commit()
+        conn.close()
+
+    def get_credit_cards(self) -> List[Dict]:
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT cc.*, a.name as linked_account_name 
+            FROM credit_cards cc 
+            LEFT JOIN accounts a ON cc.linked_account_id = a.id
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+
+    def delete_credit_card(self, card_id: int):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM credit_cards WHERE id = ?", (card_id,))
+        conn.commit()
         conn.close()
 
     def get_setting(self, key: str, default: str = None) -> str:
@@ -210,26 +327,26 @@ class Database:
         conn.commit()
         conn.close()
 
-    def add_transaction(self, date: str, type: str, category: str, amount: int, note: str = ""):
+    def add_transaction(self, date: str, type: str, category: str, amount: int, note: str = "", account_id: int = None, credit_card_id: int = None):
         """Add a new transaction."""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO transactions (date, type, category, amount, note)
-            VALUES (?, ?, ?, ?, ?)
-        """, (date, type, category, amount, note))
+            INSERT INTO transactions (date, type, category, amount, note, account_id, credit_card_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (date, type, category, amount, note, account_id, credit_card_id))
         conn.commit()
         conn.close()
 
-    def update_transaction(self, transaction_id: int, date: str, type: str, category: str, amount: int, note: str = ""):
+    def update_transaction(self, transaction_id: int, date: str, type: str, category: str, amount: int, note: str = "", account_id: int = None, credit_card_id: int = None):
         """Update an existing transaction."""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
             UPDATE transactions 
-            SET date = ?, type = ?, category = ?, amount = ?, note = ?
+            SET date = ?, type = ?, category = ?, amount = ?, note = ?, account_id = ?, credit_card_id = ?
             WHERE id = ?
-        """, (date, type, category, amount, note, transaction_id))
+        """, (date, type, category, amount, note, account_id, credit_card_id, transaction_id))
         conn.commit()
         conn.close()
 
@@ -240,13 +357,71 @@ class Database:
         cursor = conn.cursor()
         
         if month:
-            cursor.execute("SELECT * FROM transactions WHERE date LIKE ? ORDER BY date DESC, id DESC", (f"{month}%",))
+            cursor.execute("""
+                SELECT t.*, a.name as account_name, cc.name as credit_card_name, la.name as linked_account_name
+                FROM transactions t
+                LEFT JOIN accounts a ON t.account_id = a.id
+                LEFT JOIN credit_cards cc ON t.credit_card_id = cc.id
+                LEFT JOIN accounts la ON cc.linked_account_id = la.id
+                WHERE t.date LIKE ? 
+                ORDER BY t.date DESC, t.id DESC
+            """, (f"{month}%",))
         else:
-            cursor.execute("SELECT * FROM transactions ORDER BY date DESC, id DESC")
+            cursor.execute("""
+                SELECT t.*, a.name as account_name, cc.name as credit_card_name, la.name as linked_account_name
+                FROM transactions t
+                LEFT JOIN accounts a ON t.account_id = a.id
+                LEFT JOIN credit_cards cc ON t.credit_card_id = cc.id
+                LEFT JOIN accounts la ON cc.linked_account_id = la.id
+                ORDER BY t.date DESC, t.id DESC
+            """)
             
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
+
+    def get_all_transactions(self) -> List[Dict]:
+        """Get all transactions sorted by date."""
+        return self.get_transactions(month=None)
+
+    def transaction_exists(self, date: str, type_: str, category: str, amount: int, note: str) -> bool:
+        """Check if a transaction already exists to avoid duplicates during import."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT count(*) FROM transactions 
+            WHERE date = ? AND type = ? AND category = ? AND amount = ? AND note = ?
+        """, (date, type_, category, amount, note))
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count > 0
+
+    def import_transactions(self, transactions: List[Dict]) -> int:
+        """
+        Import transactions from a list of dictionaries.
+        Returns the number of transactions successfully added.
+        """
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        added_count = 0
+        
+        for t in transactions:
+            # Check for duplicates
+            cursor.execute("""
+                SELECT count(*) FROM transactions 
+                WHERE date = ? AND type = ? AND category = ? AND amount = ? AND note = ?
+            """, (t['date'], t['type'], t['category'], t['amount'], t['note']))
+            
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO transactions (date, type, category, amount, note)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (t['date'], t['type'], t['category'], t['amount'], t['note']))
+                added_count += 1
+                
+        conn.commit()
+        conn.close()
+        return added_count
 
     def get_balance(self, month: str = None) -> int:
         """Calculate balance, optionally filtered by month (YYYY-MM)."""

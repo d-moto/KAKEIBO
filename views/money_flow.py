@@ -106,14 +106,15 @@ class MoneyFlowView(ft.UserControl):
             # M+1: Savings (if any)
             
             budget_node_idx = 0
-            labels.append(f"Total<br>¥{total_income:,}")
+            budget_node_idx = 0
+            labels.append("Total")
             colors.append("darkslategray") # Center node color
             
             current_idx = 1
             
             # Income Nodes (Left side) -> Total Node
             for item in income_list:
-                labels.append(f"{item['category']}<br>¥{item['amount']:,}")
+                labels.append(item['category'])
                 colors.append("mediumseagreen") # Income color
                 source.append(current_idx)
                 target.append(budget_node_idx)
@@ -122,7 +123,7 @@ class MoneyFlowView(ft.UserControl):
                 
             # Total Node -> Expense Nodes (Right side)
             for item in expense_list:
-                labels.append(f"{item['category']}<br>¥{item['amount']:,}")
+                labels.append(item['category'])
                 colors.append("crimson") # Expense color
                 source.append(budget_node_idx)
                 target.append(current_idx)
@@ -132,7 +133,7 @@ class MoneyFlowView(ft.UserControl):
             # Total Node -> Savings (if income > expenses)
             if total_income > total_expenses:
                 savings = total_income - total_expenses
-                labels.append(f"Savings<br>¥{savings:,}")
+                labels.append("Savings")
                 colors.append("gold") # Savings color
                 source.append(budget_node_idx)
                 target.append(current_idx)

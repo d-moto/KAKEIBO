@@ -11,6 +11,7 @@ class DashboardView(ft.UserControl):
         self.on_edit_click = on_edit_click
         self.db = Database()
         self.current_month = datetime.now().strftime("%Y-%m")
+        self.all_transactions = [] # Store all transactions for current month for filtering
 
     def build(self):
         self.file_picker = ft.FilePicker(on_result=self.export_csv)
@@ -40,6 +41,19 @@ class DashboardView(ft.UserControl):
             color=ft.colors.GREEN_400,
             bgcolor=ft.colors.WHITE24,
             value=0
+        )
+
+        self.search_field = ft.TextField(
+            hint_text="Search",
+            prefix_icon=ft.icons.SEARCH,
+            on_change=self.filter_transactions,
+            width=300,
+            height=40,
+            content_padding=10,
+            text_size=14,
+            border_radius=20,
+            bgcolor=ft.colors.WHITE10,
+            border_color=ft.colors.TRANSPARENT,
         )
 
         self.transactions_list = ft.ListView(
@@ -94,7 +108,10 @@ class DashboardView(ft.UserControl):
                                     self.budget_text,
                                     self.budget_progress
                                 ], spacing=5, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                                ft.Text("Recent Transactions", size=20, weight=ft.FontWeight.W_500, color=ft.colors.WHITE70),
+                                ft.Row([
+                                    ft.Text("Recent Transactions", size=20, weight=ft.FontWeight.W_500, color=ft.colors.WHITE70),
+                                    self.search_field
+                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                                 self.transactions_list
                             ],
                             spacing=20,
@@ -223,12 +240,22 @@ class DashboardView(ft.UserControl):
 
     def load_data(self):
         try:
-            transactions = self.db.get_transactions(self.current_month)
+            self.all_transactions = self.db.get_transactions(self.current_month)
             balance = self.db.get_balance(self.current_month)
             
             # Calculate total expenses for budget
-            total_expenses = sum(t['amount'] for t in transactions if t['type'] == 'Expense')
-            budget = self.db.get_budget(self.current_month)
+            total_expenses = sum(t['amount'] for t in self.all_transactions if t['type'] == 'Expense')
+            
+            # Check for category budgets first
+            category_budgets = self.db.get_category_budgets()
+            total_category_budget = sum(category_budgets.values())
+            
+            if total_category_budget > 0:
+                budget = total_category_budget
+                budget_source = "(Category Sum)"
+            else:
+                budget = self.db.get_budget(self.current_month)
+                budget_source = ""
             
             self.balance_text.value = f"¥{balance:,}"
             
@@ -236,7 +263,7 @@ class DashboardView(ft.UserControl):
             if budget > 0:
                 progress = min(total_expenses / budget, 1.0)
                 self.budget_progress.value = progress
-                self.budget_text.value = f"Expenses: ¥{total_expenses:,} / Budget: ¥{budget:,} ({int(progress*100)}%)"
+                self.budget_text.value = f"Expenses: ¥{total_expenses:,} / Budget: ¥{budget:,} ({int(progress*100)}%) {budget_source}"
                 if progress >= 1.0:
                     self.budget_progress.color = ft.colors.RED_400
                 elif progress >= 0.8:
@@ -248,54 +275,72 @@ class DashboardView(ft.UserControl):
                 self.budget_text.value = f"Expenses: ¥{total_expenses:,} (No Budget Set)"
                 self.budget_progress.color = ft.colors.GREY_400
 
-            self.transactions_list.controls.clear()
-            
-            for t in transactions:
-                icon = ft.icons.ADD_CIRCLE if t['type'] == 'Income' else ft.icons.REMOVE_CIRCLE
-                color = ft.colors.GREEN_400 if t['type'] == 'Income' else ft.colors.RED_400
-                
-                self.transactions_list.controls.append(
-                    ft.Container(
-                        content=ft.Row(
-                            [
-                                ft.Row([
-                                    ft.Icon(icon, color=color),
-                                    ft.Column([
-                                        ft.Text(t['category'], weight=ft.FontWeight.BOLD),
-                                        ft.Text(t['date'], size=12, color=ft.colors.WHITE54),
-                                    ], spacing=2),
-                                ]),
-                                ft.Row([
-                                    ft.Text(f"¥{t['amount']:,}", size=16, weight=ft.FontWeight.BOLD),
-                                    ft.IconButton(
-                                        icon=ft.icons.EDIT, 
-                                        icon_size=20, 
-                                        tooltip="Edit",
-                                        on_click=lambda e, t=t: self.on_edit_click(t) if self.on_edit_click else None
-                                    ),
-                                    ft.IconButton(
-                                        icon=ft.icons.DELETE, 
-                                        icon_size=20, 
-                                        icon_color=ft.colors.RED_400,
-                                        tooltip="Delete",
-                                        on_click=lambda e, t_id=t['id']: self.delete_transaction(t_id)
-                                    ),
-                                ])
-                            ],
-                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        ),
-                        padding=10,
-                        bgcolor=ft.colors.WHITE10,
-                        border_radius=10,
-                    )
-                )
+            # Initial render with all transactions (or current filter)
+            self.filter_transactions(None)
             
             # Update Chart
-            self.update_chart(transactions)
+            self.update_chart(self.all_transactions)
             
             self.update()
         except Exception:
             traceback.print_exc()
+
+    def filter_transactions(self, e):
+        query = self.search_field.value.lower() if self.search_field.value else ""
+        
+        filtered = []
+        for t in self.all_transactions:
+            if (query in t['category'].lower() or 
+                query in t.get('note', '').lower() or 
+                query in str(t['amount'])):
+                filtered.append(t)
+        
+        self.transactions_list.controls.clear()
+        
+        if not filtered:
+             self.transactions_list.controls.append(ft.Text("No transactions found", color=ft.colors.WHITE54, text_align=ft.TextAlign.CENTER))
+        
+        for t in filtered:
+            icon = ft.icons.ADD_CIRCLE if t['type'] == 'Income' else ft.icons.REMOVE_CIRCLE
+            color = ft.colors.GREEN_400 if t['type'] == 'Income' else ft.colors.RED_400
+            
+            self.transactions_list.controls.append(
+                ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Row([
+                                ft.Icon(icon, color=color),
+                                ft.Column([
+                                    ft.Text(t['category'], weight=ft.FontWeight.BOLD),
+                                    ft.Text(t['date'], size=12, color=ft.colors.WHITE54),
+                                    self._get_payment_info_text(t),
+                                ], spacing=2),
+                            ]),
+                            ft.Row([
+                                ft.Text(f"¥{t['amount']:,}", size=16, weight=ft.FontWeight.BOLD),
+                                ft.IconButton(
+                                    icon=ft.icons.EDIT, 
+                                    icon_size=20, 
+                                    tooltip="Edit",
+                                    on_click=lambda e, t=t: self.on_edit_click(t) if self.on_edit_click else None
+                                ),
+                                ft.IconButton(
+                                    icon=ft.icons.DELETE, 
+                                    icon_size=20, 
+                                    icon_color=ft.colors.RED_400,
+                                    tooltip="Delete",
+                                    on_click=lambda e, t_id=t['id']: self.delete_transaction(t_id)
+                                ),
+                            ])
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    ),
+                    padding=10,
+                    bgcolor=ft.colors.WHITE10,
+                    border_radius=10,
+                )
+            )
+        self.transactions_list.update()
 
     def delete_transaction(self, transaction_id):
         def confirm_delete(e):
@@ -358,3 +403,12 @@ class DashboardView(ft.UserControl):
             )
         
         self.chart.sections = sections
+        self.chart.sections = sections
+
+    def _get_payment_info_text(self, t):
+        if t['account_name']:
+            return ft.Text(f"Via: {t['account_name']}", size=10, color=ft.colors.BLUE_200)
+        elif t['credit_card_name']:
+            withdrawal_text = f" (Withdrawal: {t['linked_account_name']})" if t['linked_account_name'] else ""
+            return ft.Text(f"Via: {t['credit_card_name']}{withdrawal_text}", size=10, color=ft.colors.ORANGE_200)
+        return ft.Container()
