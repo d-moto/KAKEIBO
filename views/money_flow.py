@@ -1,7 +1,7 @@
 import flet as ft
 from database import Database
 from datetime import datetime
-import plotly.graph_objects as go
+
 
 class MoneyFlowView(ft.UserControl):
     def __init__(self, page: ft.Page):
@@ -92,94 +92,165 @@ class MoneyFlowView(ft.UserControl):
                 self.update()
                 return
 
-            # Prepare Sankey Data
-            labels = []
-            source = []
-            target = []
-            value = []
-            colors = []
-            
-            # Node Indices
-            # 0: Total (Center)
-            # 1..N: Income Categories
-            # N+1..M: Expense Categories
-            # M+1: Savings (if any)
-            
-            budget_node_idx = 0
-            budget_node_idx = 0
-            labels.append("Total")
-            colors.append("darkslategray") # Center node color
-            
-            current_idx = 1
-            
-            # Income Nodes (Left side) -> Total Node
-            for item in income_list:
-                labels.append(item['category'])
-                colors.append("mediumseagreen") # Income color
-                source.append(current_idx)
-                target.append(budget_node_idx)
-                value.append(item['amount'])
-                current_idx += 1
-                
-            # Total Node -> Expense Nodes (Right side)
-            for item in expense_list:
-                labels.append(item['category'])
-                colors.append("crimson") # Expense color
-                source.append(budget_node_idx)
-                target.append(current_idx)
-                value.append(item['amount'])
-                current_idx += 1
-                
-            # Total Node -> Savings (if income > expenses)
-            if total_income > total_expenses:
-                savings = total_income - total_expenses
-                labels.append("Savings")
-                colors.append("gold") # Savings color
-                source.append(budget_node_idx)
-                target.append(current_idx)
-                value.append(savings)
-                current_idx += 1
-                
-            # Calculate dynamic height based on number of nodes
-            # Base height 600, plus 50px for each additional category over 5
-            max_categories = max(len(income_list), len(expense_list))
-            dynamic_height = max(600, 400 + (max_categories * 60))
+            savings = max(0, total_income - total_expenses)
+            savings_rate = (savings / total_income * 100) if total_income > 0 else 0
 
-            # Create Plotly Figure
-            fig = go.Figure(data=[go.Sankey(
-                node = dict(
-                pad = 30, # Increased padding to separate nodes
-                thickness = 20,
-                line = dict(color = "black", width = 0.5),
-                label = labels,
-                color = colors,
-                hovertemplate='<b>%{label}</b><br>¥%{value:,}<extra></extra>'
-                ),
-                link = dict(
-                source = source,
-                target = target,
-                value = value,
-                hovertemplate='%{source.label} → %{target.label}<br><b>¥%{value:,}</b><extra></extra>'
-            ))])
+            # --- Chart Data Preparation ---
+            income_list.sort(key=lambda x: x['amount'], reverse=True)
+            expense_list.sort(key=lambda x: x['amount'], reverse=True)
 
-            fig.update_layout(
-                title_text=f"Money Flow - {self.current_month}",
-                font_size=10,
-                paper_bgcolor='rgba(0,0,0,0)', # Transparent background
-                plot_bgcolor='rgba(0,0,0,0)',
-                font_color="white",
-                margin=dict(l=10, r=10, t=30, b=10),
-                height=dynamic_height # Use dynamic height
+            # Colors
+            income_colors = [ft.colors.GREEN_400, ft.colors.TEAL_400, ft.colors.CYAN_400, ft.colors.BLUE_400]
+            expense_colors = [
+                ft.colors.RED_400, ft.colors.ORANGE_400, ft.colors.AMBER_400, ft.colors.DEEP_ORANGE_400,
+                ft.colors.PINK_400, ft.colors.PURPLE_400, ft.colors.INDIGO_400
+            ]
+
+            # Income Stack
+            income_stack = []
+            current_y = 0
+            for i, item in enumerate(income_list):
+                income_stack.append(
+                    ft.BarChartRodStackItem(
+                        from_y=current_y,
+                        to_y=current_y + item['amount'],
+                        color=income_colors[i % len(income_colors)],
+                    )
+                )
+                current_y += item['amount']
+            
+            income_rod = ft.BarChartRod(
+                to_y=total_income,
+                width=60,
+                rod_stack_items=income_stack,
+                tooltip=f"Total Income: ¥{total_income:,}",
+                border_radius=ft.border_radius.vertical(top=5)
             )
 
-            from flet.plotly_chart import PlotlyChart
-            self.chart_container.content = PlotlyChart(fig, expand=True)
+            # Outflow Stack (Expenses + Savings)
+            outflow_stack = []
+            current_y = 0
+            for i, item in enumerate(expense_list):
+                outflow_stack.append(
+                    ft.BarChartRodStackItem(
+                        from_y=current_y,
+                        to_y=current_y + item['amount'],
+                        color=expense_colors[i % len(expense_colors)],
+                    )
+                )
+                current_y += item['amount']
+            
+            if savings > 0:
+                outflow_stack.append(
+                    ft.BarChartRodStackItem(
+                        from_y=current_y,
+                        to_y=current_y + savings,
+                        color=ft.colors.YELLOW_400,
+                    )
+                )
+                current_y += savings
+
+            outflow_rod = ft.BarChartRod(
+                to_y=current_y,
+                width=60,
+                rod_stack_items=outflow_stack,
+                tooltip=f"Total Outflow: ¥{current_y:,}",
+                border_radius=ft.border_radius.vertical(top=5)
+            )
+
+            chart = ft.BarChart(
+                bar_groups=[
+                    ft.BarChartGroup(x=0, bar_rods=[income_rod]),
+                    ft.BarChartGroup(x=1, bar_rods=[outflow_rod]),
+                ],
+                bottom_axis=ft.ChartAxis(
+                    labels=[
+                        ft.ChartAxisLabel(value=0, label=ft.Text("Income", weight=ft.FontWeight.BOLD)),
+                        ft.ChartAxisLabel(value=1, label=ft.Text("Outflow", weight=ft.FontWeight.BOLD)),
+                    ],
+                ),
+                left_axis=ft.ChartAxis(labels_size=40, title=ft.Text("Amount"), title_size=20),
+                border=ft.border.all(1, ft.colors.WHITE10),
+                expand=True,
+                tooltip_bgcolor=ft.colors.with_opacity(0.8, ft.colors.BLUE_GREY_900),
+                max_y=max(total_income, current_y) * 1.1
+            )
+
+            # --- Summary Section ---
+            summary_row = ft.Row([
+                self._build_summary_card("Total Income", total_income, ft.colors.GREEN_400),
+                self._build_summary_card("Total Expenses", total_expenses, ft.colors.RED_400),
+                self._build_summary_card("Savings", savings, ft.colors.YELLOW_400, f"{savings_rate:.1f}%"),
+            ], alignment=ft.MainAxisAlignment.SPACE_EVENLY)
+
+            # --- Breakdown List ---
+            breakdown_items = []
+            
+            # Income Breakdown
+            breakdown_items.append(ft.Text("Income Breakdown", size=16, weight=ft.FontWeight.BOLD, color=ft.colors.GREEN_200))
+            for i, item in enumerate(income_list):
+                breakdown_items.append(self._build_list_item(item, income_colors[i % len(income_colors)]))
+            
+            breakdown_items.append(ft.Divider(color=ft.colors.WHITE24))
+            
+            # Expense Breakdown
+            breakdown_items.append(ft.Text("Expense Breakdown", size=16, weight=ft.FontWeight.BOLD, color=ft.colors.RED_200))
+            for i, item in enumerate(expense_list):
+                breakdown_items.append(self._build_list_item(item, expense_colors[i % len(expense_colors)]))
+                
+            if savings > 0:
+                 breakdown_items.append(self._build_list_item({'category': 'Savings', 'amount': savings}, ft.colors.YELLOW_400))
+
+            breakdown_container = ft.Container(
+                content=ft.Column(breakdown_items, scroll=ft.ScrollMode.AUTO),
+                padding=20,
+                bgcolor=ft.colors.WHITE10,
+                border_radius=10,
+                expand=True
+            )
+
+            # Layout
+            self.chart_container.content = ft.Row([
+                # Left: Chart + Summary
+                ft.Container(
+                    content=ft.Column([
+                        ft.Container(content=chart, expand=2),
+                        ft.Container(content=summary_row, padding=10, bgcolor=ft.colors.WHITE10, border_radius=10)
+                    ]),
+                    expand=2,
+                    padding=10
+                ),
+                # Right: Breakdown List
+                ft.Container(
+                    content=breakdown_container,
+                    expand=1,
+                    padding=10
+                )
+            ], expand=True)
+            
             self.update()
-        except Exception as e:
+        except Exception:
             import traceback
-            error_msg = f"Error loading Money Flow:\n{str(e)}\n{traceback.format_exc()}"
-            self.chart_container.content = ft.Column([
-                ft.Text("Error loading chart", color=ft.colors.RED, size=20),
-                ft.Text(error_msg, color=ft.colors.RED_200, size=12, selectable=True)
-            ], scroll=ft.ScrollMode.AUTO)
-            self.update()
+            traceback.print_exc()
+
+    def _build_summary_card(self, title, amount, color, subtext=None):
+        content = [
+            ft.Text(title, size=12, color=ft.colors.WHITE70),
+            ft.Text(f"¥{amount:,}", size=18, weight=ft.FontWeight.BOLD, color=color)
+        ]
+        if subtext:
+            content.append(ft.Text(subtext, size=12, color=ft.colors.WHITE54))
+            
+        return ft.Column(content, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2)
+
+    def _build_list_item(self, item, color):
+        return ft.Container(
+            content=ft.Row([
+                ft.Row([
+                    ft.Container(width=10, height=10, bgcolor=color, border_radius=2),
+                    ft.Text(item['category'], size=14)
+                ]),
+                ft.Text(f"¥{item['amount']:,}", size=14, weight=ft.FontWeight.BOLD)
+            ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            padding=5
+        )
