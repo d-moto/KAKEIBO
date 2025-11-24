@@ -3,8 +3,7 @@ from database import Database
 import traceback
 from datetime import datetime
 import csv
-import plotly.graph_objects as go
-from flet.plotly_chart import PlotlyChart
+
 
 class DashboardView(ft.UserControl):
     def __init__(self, page: ft.Page, on_edit_click=None):
@@ -375,37 +374,63 @@ class DashboardView(ft.UserControl):
                 self.update()
                 return
 
-            labels = [item['category'] for item in expenses]
-            values = [item['amount'] for item in expenses]
+            # Sort expenses by amount desc
+            expenses.sort(key=lambda x: x['amount'], reverse=True)
             
-            fig = go.Figure(data=[go.Pie(
-                labels=labels, 
-                values=values, 
-                hole=.4,
-                textinfo='percent',
-                textposition='outside',
-                textfont=dict(size=14, color="white"),
-                hoverinfo='label+value+percent',
-                hovertemplate='<b>%{label}</b><br>¥%{value:,}<br>%{percent}<extra></extra>'
-            )])
-
-            fig.update_layout(
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                font_color="white",
-                margin=dict(t=20, b=20, l=20, r=20),
-                showlegend=True,
-                legend=dict(
-                    orientation="h", 
-                    yanchor="bottom", 
-                    y=-0.2, 
-                    xanchor="center", 
-                    x=0.5,
-                    font=dict(size=12)
+            total_amount = sum(item['amount'] for item in expenses)
+            
+            # Colors for chart
+            colors = [
+                ft.colors.BLUE_400, ft.colors.RED_400, ft.colors.GREEN_400, ft.colors.ORANGE_400, 
+                ft.colors.PURPLE_400, ft.colors.CYAN_400, ft.colors.TEAL_400, ft.colors.PINK_400,
+                ft.colors.AMBER_400, ft.colors.INDIGO_400, ft.colors.LIME_400, ft.colors.BROWN_400
+            ]
+            
+            sections = []
+            legend_items = []
+            
+            for i, item in enumerate(expenses):
+                color = colors[i % len(colors)]
+                percentage = (item['amount'] / total_amount) * 100
+                
+                # Create Chart Section
+                sections.append(
+                    ft.PieChartSection(
+                        value=item['amount'],
+                        title=f"{int(percentage)}%",
+                        title_style=ft.TextStyle(size=12, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE),
+                        color=color,
+                        radius=60, # Donut thickness
+                    )
                 )
-            )
+                
+                # Create Legend Item
+                legend_items.append(
+                    ft.Row([
+                        ft.Container(width=12, height=12, bgcolor=color, border_radius=2),
+                        ft.Text(f"{item['category']}: {int(percentage)}%", size=12, color=ft.colors.WHITE70)
+                    ], spacing=5)
+                )
 
-            self.chart_container.content = PlotlyChart(fig, expand=True)
+            chart = ft.PieChart(
+                sections=sections,
+                sections_space=2,
+                center_space_radius=40, # Hole size
+                expand=True,
+            )
+            
+            # Layout: Chart + Legend
+            self.chart_container.content = ft.Column([
+                ft.Container(
+                    content=chart,
+                    height=250, # Fixed height for chart
+                ),
+                ft.Container(
+                    content=ft.Row(legend_items, wrap=True, spacing=10, run_spacing=5, alignment=ft.MainAxisAlignment.CENTER),
+                    padding=10
+                )
+            ], spacing=10)
+            
             self.update()
         except Exception:
             traceback.print_exc()

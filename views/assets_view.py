@@ -1,7 +1,6 @@
 import flet as ft
 from database import Database
-import plotly.graph_objects as go
-from flet.plotly_chart import PlotlyChart
+
 
 class AssetsView(ft.UserControl):
     def __init__(self, page: ft.Page):
@@ -81,36 +80,73 @@ class AssetsView(ft.UserControl):
     def load_chart(self):
         trend_data = self.db.get_asset_trend(days=30)
         
-        dates = [d['date'] for d in trend_data]
-        amounts = [d['amount'] for d in trend_data]
-        
-        fig = go.Figure(data=go.Scatter(
-            x=dates, 
-            y=amounts, 
-            mode='lines+markers',
-            line=dict(color='#00E5FF', width=3),
-            marker=dict(size=6, color='#00E5FF'),
-            hovertemplate='<b>%{x}</b><br>¥%{y:,}<extra></extra>'
-        ))
+        if not trend_data:
+            self.chart_container.content = ft.Text("No data available", color=ft.colors.WHITE54)
+            self.update()
+            return
 
-        fig.update_layout(
-            title='Total Assets (Last 30 Days)',
-            title_font_color="white",
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
-            font_color="white",
-            xaxis=dict(
-                showgrid=False, 
-                zeroline=False, 
-                tickformat="%m-%d",
-                dtick=86400000.0 * 5  # Show tick every 5 days roughly
+        # Prepare data points
+        data_points = []
+        min_y = float('inf')
+        max_y = float('-inf')
+        
+        for i, d in enumerate(trend_data):
+            amount = d['amount']
+            data_points.append(
+                ft.LineChartDataPoint(
+                    i, 
+                    amount,
+                    tooltip=f"{d['date']}\n¥{amount:,}",
+                )
+            )
+            min_y = min(min_y, amount)
+            max_y = max(max_y, amount)
+            
+        # Add buffer to Y axis
+        y_span = max_y - min_y
+        if y_span == 0:
+            y_span = max_y * 0.1 if max_y != 0 else 1000
+            
+        min_y -= y_span * 0.1
+        max_y += y_span * 0.1
+
+        chart = ft.LineChart(
+            data_series=[
+                ft.LineChartData(
+                    data_points=data_points,
+                    stroke_width=3,
+                    color=ft.colors.CYAN,
+                    curved=True,
+                    stroke_cap_round=True,
+                    below_line_bgcolor=ft.colors.with_opacity(0.2, ft.colors.CYAN),
+                )
+            ],
+            border=ft.border.all(1, ft.colors.WHITE10),
+            left_axis=ft.ChartAxis(
+                labels_size=40,
+                title=ft.Text("Amount", size=10),
+                title_size=20,
             ),
-            yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)', zeroline=False),
-            margin=dict(t=40, b=20, l=40, r=20),
-            height=400
+            bottom_axis=ft.ChartAxis(
+                labels=[
+                    ft.ChartAxisLabel(
+                        value=i,
+                        label=ft.Text(d['date'][5:], size=10, weight=ft.FontWeight.BOLD)
+                    ) for i, d in enumerate(trend_data) if i % 5 == 0 # Show every 5th label
+                ],
+                labels_size=20,
+            ),
+            tooltip_bgcolor=ft.colors.with_opacity(0.8, ft.colors.BLUE_GREY_900),
+            min_y=min_y,
+            max_y=max_y,
+            expand=True,
         )
 
-        self.chart_container.content = PlotlyChart(fig, expand=True)
+        self.chart_container.content = ft.Container(
+            content=chart,
+            height=300,
+            padding=10
+        )
         self.update()
 
     def load_accounts(self):
