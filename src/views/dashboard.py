@@ -3,6 +3,7 @@ from database import Database
 import traceback
 from datetime import datetime
 import csv
+from views.fixed_costs_dialog import FixedCostsDialog
 
 
 class DashboardView(ft.UserControl):
@@ -29,6 +30,13 @@ class DashboardView(ft.UserControl):
             size=20,
             weight=ft.FontWeight.BOLD,
             color=ft.colors.WHITE
+        )
+
+        self.total_assets_text = ft.Text(
+            "¥0",
+            size=20,
+            weight=ft.FontWeight.BOLD,
+            color=ft.colors.CYAN_400
         )
 
         self.budget_text = ft.Text(
@@ -93,6 +101,11 @@ class DashboardView(ft.UserControl):
                                             icon=ft.icons.EDIT,
                                             tooltip="Set Budget",
                                             on_click=self.show_budget_dialog
+                                        ),
+                                        ft.IconButton(
+                                            icon=ft.icons.REPEAT,
+                                            tooltip="Fixed Costs",
+                                            on_click=self.show_fixed_costs_dialog
                                         )
                                     ],
                                     alignment=ft.MainAxisAlignment.CENTER,
@@ -173,6 +186,12 @@ class DashboardView(ft.UserControl):
         dlg.open = True
         self.page.update()
 
+    def show_fixed_costs_dialog(self, e):
+        dlg = FixedCostsDialog(self.page, on_dismiss=self.load_data)
+        self.page.dialog = dlg
+        dlg.open = True
+        self.page.update()
+
     def export_csv(self, e: ft.FilePickerResultEvent):
         if e.path:
             try:
@@ -226,6 +245,14 @@ class DashboardView(ft.UserControl):
                         self.balance_text
                     ],
                     spacing=0
+                ),
+                ft.Container(width=40), # Spacer
+                ft.Column(
+                    [
+                        ft.Text("Total Assets", size=14, color=ft.colors.WHITE70),
+                        self.total_assets_text
+                    ],
+                    spacing=0
                 )
             ],
             alignment=ft.MainAxisAlignment.START,
@@ -235,6 +262,7 @@ class DashboardView(ft.UserControl):
         try:
             self.all_transactions = self.db.get_transactions(self.current_month)
             balance = self.db.get_balance(self.current_month)
+            total_assets = self.db.get_total_assets()
             
             # Calculate total expenses for budget
             total_expenses = sum(t['amount'] for t in self.all_transactions if t['type'] == 'Expense')
@@ -251,6 +279,7 @@ class DashboardView(ft.UserControl):
                 budget_source = ""
             
             self.balance_text.value = f"¥{balance:,}"
+            self.total_assets_text.value = f"¥{total_assets:,}"
             
             # Update budget display
             if budget > 0:
@@ -370,7 +399,7 @@ class DashboardView(ft.UserControl):
             expenses = summary['expenses']
             
             if not expenses:
-                self.chart_container.content = ft.Center(ft.Text("No expenses for this month", color=ft.colors.WHITE54))
+                self.chart_container.content = ft.Container(content=ft.Text("No expenses for this month", color=ft.colors.WHITE54), alignment=ft.alignment.center)
                 self.update()
                 return
 

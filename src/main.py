@@ -34,6 +34,7 @@ def main(page: ft.Page):
         from views.money_flow import MoneyFlowView
         from views.calendar_view import CalendarView
         from views.assets_view import AssetsView
+        from views.reports_view import ReportsView
         
         # Define views
         dashboard = None
@@ -42,6 +43,7 @@ def main(page: ft.Page):
         money_flow_view = None
         calendar_view = None
         assets_view = None
+        reports_view = None
 
         def on_save_transaction():
             # Switch to dashboard
@@ -64,6 +66,7 @@ def main(page: ft.Page):
         money_flow_view = MoneyFlowView(page)
         calendar_view = CalendarView(page)
         assets_view = AssetsView(page)
+        reports_view = ReportsView(page)
 
         def check_fixed_costs(page):
             added_count = db.process_fixed_costs()
@@ -137,6 +140,8 @@ def main(page: ft.Page):
             elif index == 4:
                 body_container.content = assets_view
             elif index == 5:
+                body_container.content = reports_view
+            elif index == 6:
                 body_container.content = settings_view
             
             body_container.update()
@@ -172,6 +177,11 @@ def main(page: ft.Page):
                     icon=ft.icons.ACCOUNT_BALANCE_OUTLINED, 
                     selected_icon=ft.icons.ACCOUNT_BALANCE, 
                     label="Assets"
+                ),
+                ft.NavigationRailDestination(
+                    icon=ft.icons.ANALYTICS_OUTLINED, 
+                    selected_icon=ft.icons.ANALYTICS, 
+                    label="Reports"
                 ),
                 ft.NavigationRailDestination(
                     icon=ft.icons.SETTINGS_OUTLINED, 

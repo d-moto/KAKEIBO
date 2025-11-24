@@ -88,7 +88,7 @@ class MoneyFlowView(ft.UserControl):
             total_expenses = data['total_expenses']
             
             if total_income == 0 and total_expenses == 0:
-                self.chart_container.content = ft.Center(ft.Text("No data for this month.", color=ft.colors.WHITE54))
+                self.chart_container.content = ft.Container(content=ft.Text("No data for this month.", color=ft.colors.WHITE54), alignment=ft.alignment.center)
                 self.update()
                 return
 
@@ -123,7 +123,7 @@ class MoneyFlowView(ft.UserControl):
                 to_y=total_income,
                 width=60,
                 rod_stack_items=income_stack,
-                tooltip=f"Total Income: ¥{total_income:,}",
+                tooltip=f"Total Income: {total_income:,}",
                 border_radius=ft.border_radius.vertical(top=5)
             )
 
@@ -154,7 +154,7 @@ class MoneyFlowView(ft.UserControl):
                 to_y=current_y,
                 width=60,
                 rod_stack_items=outflow_stack,
-                tooltip=f"Total Outflow: ¥{current_y:,}",
+                tooltip=f"Total Outflow: {current_y:,}",
                 border_radius=ft.border_radius.vertical(top=5)
             )
 

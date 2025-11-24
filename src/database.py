@@ -53,6 +53,8 @@ class Database:
             )
         """)
 
+
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS fixed_costs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,9 +63,26 @@ class Database:
                 category TEXT NOT NULL,
                 type TEXT NOT NULL,
                 day_of_month INTEGER NOT NULL,
-                last_added_month TEXT
+                last_added_month TEXT,
+                payment_method TEXT, -- 'Cash', 'Bank', 'Credit Card'
+                payment_account_id INTEGER,
+                payment_card_id INTEGER
             )
         """)
+
+        # Add new columns to fixed_costs if they don't exist
+        try:
+            cursor.execute("ALTER TABLE fixed_costs ADD COLUMN payment_method TEXT")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE fixed_costs ADD COLUMN payment_account_id INTEGER")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE fixed_costs ADD COLUMN payment_card_id INTEGER")
+        except Exception:
+            pass
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS category_budgets (
@@ -73,14 +92,22 @@ class Database:
         """)
         
         # Accounts Table
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS accounts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 type TEXT NOT NULL,
-                balance INTEGER DEFAULT 0
+                balance INTEGER DEFAULT 0,
+                asset_type TEXT DEFAULT 'Bank' -- 'Bank', 'Cash', 'Investment', 'Stock', 'Other'
             )
         """)
+
+        # Add asset_type column if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN asset_type TEXT DEFAULT 'Bank'")
+        except Exception:
+            pass
 
         # Credit Cards Table
         cursor.execute("""
@@ -129,14 +156,14 @@ class Database:
         conn.commit()
         conn.close()
 
-    def add_fixed_cost(self, name: str, amount: int, category: str, type: str, day_of_month: int):
+    def add_fixed_cost(self, name: str, amount: int, category: str, type: str, day_of_month: int, payment_method: str = "Cash", payment_account_id: int = None, payment_card_id: int = None):
         """Add a new fixed cost."""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO fixed_costs (name, amount, category, type, day_of_month)
-            VALUES (?, ?, ?, ?, ?)
-        """, (name, amount, category, type, day_of_month))
+            INSERT INTO fixed_costs (name, amount, category, type, day_of_month, payment_method, payment_account_id, payment_card_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (name, amount, category, type, day_of_month, payment_method, payment_account_id, payment_card_id))
         conn.commit()
         conn.close()
 
@@ -183,8 +210,17 @@ class Database:
                 if today_day >= fc['day_of_month']:
                     # Add transaction
                     date_str = f"{current_month}-{fc['day_of_month']:02d}"
-                    self.add_transaction(date_str, fc['type'], fc['category'], fc['amount'], f"Fixed Cost: {fc['name']}")
                     
+                    # Determine account/card IDs
+                    account_id = fc['payment_account_id']
+                    credit_card_id = fc['payment_card_id']
+                    
+                    self.add_transaction(date_str, fc['type'], fc['category'], fc['amount'], f"Fixed Cost: {fc['name']}", account_id, credit_card_id)
+                    
+                    # Update account balance if bank account used
+                    if account_id:
+                        self.update_account_balance(account_id, -fc['amount'])
+
                     # Update last added month
                     self.update_fixed_cost_last_added(fc['id'], current_month)
                     added_count += 1
@@ -251,10 +287,10 @@ class Database:
         conn.close()
 
     # --- Account Methods ---
-    def add_account(self, name: str, type: str, initial_balance: int = 0):
+    def add_account(self, name: str, type: str, initial_balance: int = 0, asset_type: str = "Bank"):
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO accounts (name, type, balance) VALUES (?, ?, ?)", (name, type, initial_balance))
+        cursor.execute("INSERT INTO accounts (name, type, balance, asset_type) VALUES (?, ?, ?, ?)", (name, type, initial_balance, asset_type))
         conn.commit()
         conn.close()
 
@@ -492,6 +528,15 @@ class Database:
         conn.close()
         return result if result is not None else 0
 
+    def get_total_assets_by_type(self) -> Dict[str, int]:
+        """Get total assets grouped by asset type."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT asset_type, SUM(balance) FROM accounts GROUP BY asset_type")
+        rows = cursor.fetchall()
+        conn.close()
+        return {row[0]: row[1] for row in rows}
+
     def get_asset_trend(self, days: int = 30) -> List[Dict]:
         """Calculate asset trend for the last N days."""
         from datetime import datetime, timedelta
@@ -540,3 +585,80 @@ class Database:
                         current_balance += t['amount']
                         
         return list(reversed(trend))
+
+    def get_monthly_comparison(self, months: int = 6) -> List[Dict]:
+        """Get income vs expense comparison for the last N months."""
+        from datetime import datetime, timedelta
+        from dateutil.relativedelta import relativedelta
+        
+        today = datetime.now().date()
+        start_date = (today - relativedelta(months=months-1)).replace(day=1)
+        start_str = start_date.strftime("%Y-%m")
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        # Get monthly totals
+        cursor.execute("""
+            SELECT strftime('%Y-%m', date) as month, type, SUM(amount) 
+            FROM transactions 
+            WHERE strftime('%Y-%m', date) >= ?
+            GROUP BY month, type
+            ORDER BY month ASC
+        """, (start_str,))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        data = {}
+        # Initialize with all months
+        for i in range(months):
+            d = start_date + relativedelta(months=i)
+            m = d.strftime("%Y-%m")
+            data[m] = {'month': m, 'income': 0, 'expense': 0}
+            
+        for row in rows:
+            month, type_, amount = row
+            if month in data:
+                if type_ == 'Income':
+                    data[month]['income'] = amount
+                elif type_ == 'Expense':
+                    data[month]['expense'] = amount
+                    
+        return list(data.values())
+
+    def get_category_trend(self, category: str, months: int = 6) -> List[Dict]:
+        """Get spending trend for a specific category over the last N months."""
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+        
+        today = datetime.now().date()
+        start_date = (today - relativedelta(months=months-1)).replace(day=1)
+        start_str = start_date.strftime("%Y-%m")
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT strftime('%Y-%m', date) as month, SUM(amount)
+            FROM transactions
+            WHERE category = ? AND strftime('%Y-%m', date) >= ?
+            GROUP BY month
+            ORDER BY month ASC
+        """, (category, start_str))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        data = {}
+        for i in range(months):
+            d = start_date + relativedelta(months=i)
+            m = d.strftime("%Y-%m")
+            data[m] = {'month': m, 'amount': 0}
+            
+        for row in rows:
+            month, amount = row
+            if month in data:
+                data[month]['amount'] = amount
+                
+        return list(data.values())

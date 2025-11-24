@@ -228,7 +228,7 @@ class InputFormView(ft.UserControl):
             account_id = None
             credit_card_id = None
             
-            if type_ == "Expense" and self.payment_method_dropdown.value != "Cash":
+            if type_ == "Expense" and self.payment_method_dropdown.value and self.payment_method_dropdown.value != "Cash":
                 val = self.payment_method_dropdown.value
                 if val.startswith("acc_"):
                     account_id = int(val.split("_")[1])
@@ -263,6 +263,9 @@ class InputFormView(ft.UserControl):
             self.page.snack_bar = ft.SnackBar(ft.Text("Amount must be a number"))
             self.page.snack_bar.open = True
             self.page.update()
-        
-        if self.on_save:
-            self.on_save()
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+            self.page.snack_bar = ft.SnackBar(ft.Text(f"Error: {ex}"))
+            self.page.snack_bar.open = True
+            self.page.update()

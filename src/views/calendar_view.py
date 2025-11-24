@@ -72,11 +72,16 @@ class CalendarView(ft.UserControl):
         
         # Fetch transactions
         transactions = self.db.get_transactions(self.current_month)
-        daily_expenses = {}
+        daily_data = {}
         for t in transactions:
-            if t['type'] == 'Expense':
-                day = int(t['date'].split('-')[2])
-                daily_expenses[day] = daily_expenses.get(day, 0) + t['amount']
+            day = int(t['date'].split('-')[2])
+            if day not in daily_data:
+                daily_data[day] = {'income': 0, 'expense': 0}
+            
+            if t['type'] == 'Income':
+                daily_data[day]['income'] += t['amount']
+            elif t['type'] == 'Expense':
+                daily_data[day]['expense'] += t['amount']
 
         for week in cal:
             week_row = ft.Row(spacing=2, expand=1)
@@ -85,19 +90,31 @@ class CalendarView(ft.UserControl):
                     # Empty day
                     cell = ft.Container(expand=1, bgcolor=ft.colors.TRANSPARENT, height=80)
                 else:
-                    amount = daily_expenses.get(day, 0)
+                    data = daily_data.get(day, {'income': 0, 'expense': 0})
+                    income = data['income']
+                    expense = data['expense']
+                    balance = income - expense
+                    
                     content_col = ft.Column(
                         [
                             ft.Text(str(day), weight=ft.FontWeight.BOLD),
                         ],
                         alignment=ft.MainAxisAlignment.START,
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                        spacing=2
+                        spacing=0
                     )
                     
-                    if amount > 0:
+                    if income > 0:
                         content_col.controls.append(
-                            ft.Text(f"¥{amount:,}", size=12, color=ft.colors.RED_200)
+                            ft.Text(f"+¥{income:,}", size=10, color=ft.colors.GREEN_400)
+                        )
+                    if expense > 0:
+                        content_col.controls.append(
+                            ft.Text(f"-¥{expense:,}", size=10, color=ft.colors.RED_400)
+                        )
+                    if income > 0 or expense > 0:
+                         content_col.controls.append(
+                            ft.Text(f"¥{balance:,}", size=10, color=ft.colors.WHITE70, weight=ft.FontWeight.BOLD)
                         )
                     
                     cell = ft.Container(
@@ -106,7 +123,7 @@ class CalendarView(ft.UserControl):
                         bgcolor=ft.colors.WHITE10,
                         border_radius=5,
                         padding=5,
-                        height=80,
+                        height=90,
                         alignment=ft.alignment.top_center
                     )
                 week_row.controls.append(cell)

@@ -1,63 +1,91 @@
-# KAKEIBO - Premium Household Account Book
+# KAKEIBO - Personal Finance Manager
 
-A modern, dark-themed household account book application built with Python and Flet.
-Designed to visualize your financial flow and help you manage your budget effectively.
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
+![Flet](https://img.shields.io/badge/Flet-UI-purple)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-## ✨ Features
+KAKEIBO is a modern, desktop-based personal finance application built with Python and Flet. It helps you track your income, expenses, and assets with a beautiful and responsive user interface.
 
-### 📊 Dashboard
-- **Monthly Overview**: View total income, expenses, and balance for the selected month.
-- **Visualizations**: Interactive pie charts showing expense breakdown by category.
-- **Budget Tracking**: Monitor your spending against a monthly budget with a progress bar.
-- **Recent Transactions**: List of recent entries with Edit/Delete capabilities.
+## Features
 
-### 📝 Transaction Management
-- **Easy Entry**: Add income or expense records with date, category, amount, and description.
-- **Smart Defaults**: Automatically selects the current date or the first day of the selected month.
-- **Category Management**: Add custom categories to suit your lifestyle.
+-   **Dashboard**: Overview of your monthly balance, budget progress, and expense distribution.
+-   **Transaction Management**: Easily add, edit, and delete income and expense transactions.
+-   **Asset Management**: Track your total assets across multiple accounts (Bank, Cash, Investment, Stock, etc.).
+-   **Money Flow**: Visualize your income and expenses flow with intuitive charts.
+-   **Reports**: Analyze your spending trends and monthly comparisons.
+-   **Calendar View**: View your daily financial activities on a calendar.
+-   **Fixed Costs**: Manage recurring expenses like rent and subscriptions.
+-   **CSV Import/Export**: Backup your data or import from other sources.
+-   **Dark/Light Mode**: Choose the theme that suits your preference.
 
-### 🌊 Money Flow (Sankey Diagram)
-- **Visual Flow**: See exactly where your money goes using a Sankey diagram.
-- **Income -> Total -> Expenses**: Visualize the flow from income sources to your "Total" pool, and then to expenses and savings.
-- **Dynamic Layout**: Automatically adjusts to the number of categories for clear visibility.
+## Tech Stack
 
-### 🔄 Fixed Costs (Recurring Expenses)
-- **Automation**: Register recurring monthly expenses (e.g., Rent, Internet, Subscriptions).
-- **Auto-Add**: The app automatically checks and adds these transactions when you open it in a new month.
+-   **Language**: Python 3.x
+-   **UI Framework**: [Flet](https://flet.dev/) (Flutter for Python)
+-   **Database**: SQLite (Local storage)
+-   **Dependencies**:
+    -   `flet`: For the user interface.
+    -   `python-dateutil`: For date calculations.
 
-### ⚙️ Settings
-- **Customization**: Configure application settings.
-- **CSV Export**: (Coming Soon) Export your data for external analysis.
+## Directory Structure
 
-## 🚀 Installation & Running
-
-### Prerequisites
-- Python 3.12+
-- `uv` package manager (recommended)
-
-### Setup
-1. Clone the repository.
-2. Install dependencies:
-   ```bash
-   uv sync
-   ```
-
-### Running the App
-```bash
-uv run main.py
+```
+KAKEIBO/
+├── src/                # Source code
+│   ├── assets/         # Static assets (icons, images)
+│   ├── views/          # UI components and views
+│   │   ├── dashboard.py
+│   │   ├── input_form.py
+│   │   ├── money_flow.py
+│   │   ├── reports_view.py
+│   │   ├── assets_view.py
+│   │   ├── calendar_view.py
+│   │   └── ...
+│   ├── database.py     # Database interaction layer
+│   └── main.py         # Application entry point
+├── tests/              # Unit tests
+│   └── test_database.py
+├── .github/            # GitHub Actions workflows
+├── pyproject.toml      # Project configuration
+└── README.md           # Project documentation
 ```
 
-## 📖 Usage Guide
+## Installation & Usage
 
-1.  **First Launch**: The app will initialize the database.
-2.  **Add Transaction**: Click the "+" icon in the navigation rail. Enter details and save.
-3.  **View Dashboard**: Check the Dashboard to see your balance and charts. Use the arrow buttons to switch months.
-4.  **Money Flow**: Click the "Waterfall" icon to view the Sankey diagram of your finances.
-5.  **Manage Fixed Costs**: Go to Settings -> Fixed Costs to register recurring payments.
-6.  **Set Budget**: Click the "Edit Budget" button on the Dashboard to set your monthly spending limit.
+### Prerequisites
 
-## 🛠️ Tech Stack
-- **UI Framework**: [Flet](https://flet.dev/) (Flutter for Python)
-- **Database**: SQLite (via SQLAlchemy)
-- **Charts**: Plotly
-- **Package Manager**: uv
+-   Python 3.10 or higher
+-   [uv](https://github.com/astral-sh/uv) (Recommended for dependency management)
+
+### Setup
+
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/yourusername/kakeibo.git
+    cd kakeibo
+    ```
+
+2.  Install dependencies:
+    ```bash
+    uv sync
+    ```
+
+### Running the Application
+
+To start the application, run:
+
+```bash
+uv run src/main.py
+```
+
+### Running Tests
+
+To run the test suite:
+
+```bash
+uv run tests/test_database.py
+```
+
+## License
+
+This project is licensed under the MIT License.

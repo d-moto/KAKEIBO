@@ -155,33 +155,72 @@ class AssetsView(ft.UserControl):
         
         if not accounts:
             self.accounts_list.controls.append(ft.Text("No accounts registered.", color=ft.colors.WHITE54))
+            self.update()
+            return
+
+        # Calculate Total Assets
+        total_assets = sum(acc['balance'] for acc in accounts)
         
+        # Group by Asset Type
+        assets_by_type = {}
         for acc in accounts:
-            self.accounts_list.controls.append(
-                ft.Container(
-                    content=ft.Row([
-                        ft.Row([
-                            ft.Icon(ft.icons.ACCOUNT_BALANCE_WALLET, color=ft.colors.BLUE_400),
-                            ft.Column([
-                                ft.Text(acc['name'], weight=ft.FontWeight.BOLD, size=16),
-                                ft.Text(f"Type: {acc['type']}", size=12, color=ft.colors.WHITE54),
-                            ], spacing=2),
-                        ]),
-                        ft.Row([
-                            ft.Text(f"¥{acc['balance']:,}", size=16, weight=ft.FontWeight.BOLD),
-                            ft.IconButton(
-                                icon=ft.icons.DELETE, 
-                                icon_color=ft.colors.RED_400, 
-                                on_click=lambda e, aid=acc['id']: self.delete_account(aid)
-                            )
-                        ])
-                    ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                    padding=15,
-                    bgcolor=ft.colors.WHITE10,
-                    border_radius=10
-                )
+            atype = acc.get('asset_type', 'Bank')
+            if atype not in assets_by_type:
+                assets_by_type[atype] = []
+            assets_by_type[atype].append(acc)
+
+        # Display Total Assets Summary
+        self.accounts_list.controls.append(
+            ft.Container(
+                content=ft.Column([
+                    ft.Text("Total Assets", size=14, color=ft.colors.WHITE70),
+                    ft.Text(f"¥{total_assets:,}", size=32, weight=ft.FontWeight.BOLD, color=ft.colors.GREEN_400),
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                padding=20,
+                bgcolor=ft.colors.WHITE10,
+                border_radius=10,
+                alignment=ft.alignment.center
             )
+        )
+
+        # Display Accounts Grouped by Type
+        for atype, accs in assets_by_type.items():
+            self.accounts_list.controls.append(ft.Text(atype, size=18, weight=ft.FontWeight.BOLD, color=ft.colors.CYAN_200))
+            
+            for acc in accs:
+                self.accounts_list.controls.append(
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Row([
+                                ft.Icon(self._get_icon_for_type(atype), color=ft.colors.BLUE_400),
+                                ft.Column([
+                                    ft.Text(acc['name'], weight=ft.FontWeight.BOLD, size=16),
+                                    ft.Text(f"Type: {acc['type']}", size=12, color=ft.colors.WHITE54),
+                                ], spacing=2),
+                            ]),
+                            ft.Row([
+                                ft.Text(f"¥{acc['balance']:,}", size=16, weight=ft.FontWeight.BOLD),
+                                ft.IconButton(
+                                    icon=ft.icons.DELETE, 
+                                    icon_color=ft.colors.RED_400, 
+                                    on_click=lambda e, aid=acc['id']: self.delete_account(aid)
+                                )
+                            ])
+                        ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        padding=15,
+                        bgcolor=ft.colors.WHITE10,
+                        border_radius=10
+                    )
+                )
         self.update()
+
+    def _get_icon_for_type(self, asset_type):
+        if asset_type == "Bank": return ft.icons.ACCOUNT_BALANCE
+        if asset_type == "Cash": return ft.icons.MONEY
+        if asset_type == "E-Money": return ft.icons.SMARTPHONE
+        if asset_type == "Investment": return ft.icons.TRENDING_UP
+        if asset_type == "Stock": return ft.icons.SHOW_CHART
+        return ft.icons.ACCOUNT_BALANCE_WALLET
 
     def load_credit_cards(self):
         self.credit_cards_list.controls.clear()
@@ -224,6 +263,8 @@ class AssetsView(ft.UserControl):
                 ft.dropdown.Option("Cash"),
                 ft.dropdown.Option("E-Money"),
                 ft.dropdown.Option("Investment"),
+                ft.dropdown.Option("Stock"),
+                ft.dropdown.Option("Other"),
             ],
             value="Bank"
         )
@@ -234,7 +275,7 @@ class AssetsView(ft.UserControl):
                 return
             try:
                 bal = int(balance_field.value)
-                self.db.add_account(name_field.value, type_field.value, bal)
+                self.db.add_account(name_field.value, type_field.value, bal, asset_type=type_field.value)
                 self.page.dialog.open = False
                 self.page.update()
                 self.load_accounts()
