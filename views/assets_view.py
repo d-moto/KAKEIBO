@@ -1,5 +1,7 @@
 import flet as ft
 from database import Database
+import plotly.graph_objects as go
+from flet.plotly_chart import PlotlyChart
 
 class AssetsView(ft.UserControl):
     def __init__(self, page: ft.Page):
@@ -8,13 +10,27 @@ class AssetsView(ft.UserControl):
         self.db = Database()
         self.accounts_list = ft.Column(spacing=10)
         self.credit_cards_list = ft.Column(spacing=10)
+        self.chart_container = ft.Container(padding=20)
 
     def build(self):
+
+
         return ft.Container(
             content=ft.Tabs(
                 selected_index=0,
                 animation_duration=300,
                 tabs=[
+                    ft.Tab(
+                        text="Overview",
+                        icon=ft.icons.SHOW_CHART,
+                        content=ft.Container(
+                            content=ft.Column([
+                                ft.Text("Asset Trends (30 Days)", size=20, weight=ft.FontWeight.BOLD),
+                                self.chart_container
+                            ]),
+                            padding=20
+                        )
+                    ),
                     ft.Tab(
                         text="Banks / Accounts",
                         icon=ft.icons.ACCOUNT_BALANCE,
@@ -60,6 +76,42 @@ class AssetsView(ft.UserControl):
     def did_mount(self):
         self.load_accounts()
         self.load_credit_cards()
+        self.load_chart()
+
+    def load_chart(self):
+        trend_data = self.db.get_asset_trend(days=30)
+        
+        dates = [d['date'] for d in trend_data]
+        amounts = [d['amount'] for d in trend_data]
+        
+        fig = go.Figure(data=go.Scatter(
+            x=dates, 
+            y=amounts, 
+            mode='lines+markers',
+            line=dict(color='#00E5FF', width=3),
+            marker=dict(size=6, color='#00E5FF'),
+            hovertemplate='<b>%{x}</b><br>¥%{y:,}<extra></extra>'
+        ))
+
+        fig.update_layout(
+            title='Total Assets (Last 30 Days)',
+            title_font_color="white",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font_color="white",
+            xaxis=dict(
+                showgrid=False, 
+                zeroline=False, 
+                tickformat="%m-%d",
+                dtick=86400000.0 * 5  # Show tick every 5 days roughly
+            ),
+            yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)', zeroline=False),
+            margin=dict(t=40, b=20, l=40, r=20),
+            height=400
+        )
+
+        self.chart_container.content = PlotlyChart(fig, expand=True)
+        self.update()
 
     def load_accounts(self):
         self.accounts_list.controls.clear()

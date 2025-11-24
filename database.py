@@ -482,3 +482,61 @@ class Database:
         cursor.execute("DELETE FROM categories WHERE id = ?", (category_id,))
         conn.commit()
         conn.close()
+
+    def get_total_assets(self) -> int:
+        """Get sum of all account balances."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT SUM(balance) FROM accounts")
+        result = cursor.fetchone()[0]
+        conn.close()
+        return result if result is not None else 0
+
+    def get_asset_trend(self, days: int = 30) -> List[Dict]:
+        """Calculate asset trend for the last N days."""
+        from datetime import datetime, timedelta
+        
+        current_assets = self.get_total_assets()
+        trend = []
+        today = datetime.now().date()
+        
+        # Get transactions for the period that affected accounts
+        start_date = (today - timedelta(days=days)).strftime("%Y-%m-%d")
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT date, type, amount 
+            FROM transactions 
+            WHERE date >= ? AND account_id IS NOT NULL
+            ORDER BY date DESC
+        """, (start_date,))
+        transactions = [dict(row) for row in cursor.fetchall()]
+        conn.close()
+        
+        # Group transactions by date
+        tx_by_date = {}
+        for t in transactions:
+            date_str = t['date']
+            if date_str not in tx_by_date:
+                tx_by_date[date_str] = []
+            tx_by_date[date_str].append(t)
+            
+        # Iterate backwards
+        current_balance = current_assets
+        
+        for i in range(days):
+            date = today - timedelta(days=i)
+            date_str = date.strftime("%Y-%m-%d")
+            
+            trend.append({"date": date_str, "amount": current_balance})
+            
+            # Reverse transactions for this day to get previous day's ending balance
+            if date_str in tx_by_date:
+                for t in tx_by_date[date_str]:
+                    if t['type'] == 'Income':
+                        current_balance -= t['amount']
+                    elif t['type'] == 'Expense':
+                        current_balance += t['amount']
+                        
+        return list(reversed(trend))

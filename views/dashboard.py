@@ -3,6 +3,8 @@ from database import Database
 import traceback
 from datetime import datetime
 import csv
+import plotly.graph_objects as go
+from flet.plotly_chart import PlotlyChart
 
 class DashboardView(ft.UserControl):
     def __init__(self, page: ft.Page, on_edit_click=None):
@@ -63,15 +65,7 @@ class DashboardView(ft.UserControl):
             auto_scroll=False
         )
 
-        self.chart = ft.PieChart(
-            sections=[],
-            sections_space=0,
-            center_space_radius=40,
-            expand=True,
-        )
-        
         self.chart_container = ft.Container(
-            content=self.chart,
             expand=True, 
             padding=20
         )
@@ -279,7 +273,7 @@ class DashboardView(ft.UserControl):
             self.filter_transactions(None)
             
             # Update Chart
-            self.update_chart(self.all_transactions)
+            self.update_chart()
             
             self.update()
         except Exception:
@@ -371,39 +365,50 @@ class DashboardView(ft.UserControl):
         dlg.open = True
         self.page.update()
 
-    def update_chart(self, transactions):
-        expenses = [t for t in transactions if t['type'] == 'Expense']
-        if not expenses:
-            # Show empty state or placeholder
-            self.chart.sections = []
-            self.chart_container.content = ft.Text("No expenses for this month", color=ft.colors.WHITE54)
-            return
+    def update_chart(self):
+        try:
+            summary = self.db.get_monthly_summary(self.current_month)
+            expenses = summary['expenses']
+            
+            if not expenses:
+                self.chart_container.content = ft.Center(ft.Text("No expenses for this month", color=ft.colors.WHITE54))
+                self.update()
+                return
 
-        # Restore chart if it was replaced by text
-        self.chart_container.content = self.chart
+            labels = [item['category'] for item in expenses]
+            values = [item['amount'] for item in expenses]
+            
+            fig = go.Figure(data=[go.Pie(
+                labels=labels, 
+                values=values, 
+                hole=.4,
+                textinfo='percent',
+                textposition='outside',
+                textfont=dict(size=14, color="white"),
+                hoverinfo='label+value+percent',
+                hovertemplate='<b>%{label}</b><br>¥%{value:,}<br>%{percent}<extra></extra>'
+            )])
 
-        category_totals = {}
-        for t in expenses:
-            cat = t['category']
-            category_totals[cat] = category_totals.get(cat, 0) + t['amount']
-        
-        sections = []
-        # Simple color palette
-        colors = [ft.colors.BLUE, ft.colors.RED, ft.colors.GREEN, ft.colors.YELLOW, ft.colors.PURPLE, ft.colors.ORANGE, ft.colors.TEAL, ft.colors.PINK]
-        
-        for i, (cat, amount) in enumerate(category_totals.items()):
-            sections.append(
-                ft.PieChartSection(
-                    amount,
-                    title=f"{cat}\n¥{amount:,}",
-                    color=colors[i % len(colors)],
-                    radius=100,
-                    title_style=ft.TextStyle(size=12, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE)
+            fig.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font_color="white",
+                margin=dict(t=20, b=20, l=20, r=20),
+                showlegend=True,
+                legend=dict(
+                    orientation="h", 
+                    yanchor="bottom", 
+                    y=-0.2, 
+                    xanchor="center", 
+                    x=0.5,
+                    font=dict(size=12)
                 )
             )
-        
-        self.chart.sections = sections
-        self.chart.sections = sections
+
+            self.chart_container.content = PlotlyChart(fig, expand=True)
+            self.update()
+        except Exception:
+            traceback.print_exc()
 
     def _get_payment_info_text(self, t):
         if t['account_name']:
