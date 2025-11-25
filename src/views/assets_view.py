@@ -386,20 +386,22 @@ class AssetsView(ft.UserControl):
             value=str(card['linked_account_id']) if card else str(accounts[0]['id'])
         )
         day_field = ft.TextField(label="Withdrawal Day (1-31)", value=str(card['withdrawal_day']) if card else "27", keyboard_type=ft.KeyboardType.NUMBER)
+        closing_day_field = ft.TextField(label="Closing Day (1-31)", value=str(card.get('closing_day', 31)) if card else "31", keyboard_type=ft.KeyboardType.NUMBER)
 
         def save(e):
             if not name_field.value:
                 return
             try:
                 day = int(day_field.value)
-                if not (1 <= day <= 31):
+                closing_day = int(closing_day_field.value)
+                if not (1 <= day <= 31) or not (1 <= closing_day <= 31):
                     raise ValueError
                 
                 if card:
-                    self.db.update_credit_card(card['id'], name_field.value, int(account_field.value), day)
+                    self.db.update_credit_card(card['id'], name_field.value, int(account_field.value), day, closing_day)
                     self.show_snack("Credit Card updated")
                 else:
-                    self.db.add_credit_card(name_field.value, int(account_field.value), day)
+                    self.db.add_credit_card(name_field.value, int(account_field.value), day, closing_day)
                     self.show_snack("Credit Card added")
                 
                 self.page.dialog.open = False
@@ -409,7 +411,7 @@ class AssetsView(ft.UserControl):
                 self.show_snack("Invalid day")
 
         title = "Edit Credit Card" if card else "Add Credit Card"
-        self.show_dialog(title, [name_field, account_field, day_field], save)
+        self.show_dialog(title, [name_field, account_field, day_field, closing_day_field], save)
 
     def show_dialog(self, title, content_list, on_save):
         def close(e):

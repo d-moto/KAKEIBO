@@ -28,8 +28,8 @@ def main(page: ft.Page):
     }
     page.theme = AppTheme.get_theme()
     
-    page.window.width = 1000
-    page.window.height = 800
+    page.window.width = 1500 #1000
+    page.window.height = 1000 #800
     
     # Show initial loading state
     page.add(ft.Text("Initializing Application...", size=20, color="white"))
@@ -69,6 +69,7 @@ def main(page: ft.Page):
             page.update()
 
         dashboard = DashboardView(page, db, on_edit_click=on_edit_transaction)
+        dashboard.expand = True
         input_form = InputFormView(page, db, on_save=on_save_transaction)
         settings_view = SettingsView(page, db)
         money_flow_view = MoneyFlowView(page, db)
@@ -219,8 +220,6 @@ def main(page: ft.Page):
         )
 
         page.clean()
-        page.add(layout)
-        page.update()
         page.add(layout)
         page.update()
         logger.info("Main UI rendered.")

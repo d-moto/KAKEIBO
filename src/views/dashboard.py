@@ -1,15 +1,21 @@
 import flet as ft
 from database import Database
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 import csv
 from views.fixed_costs_dialog import FixedCostsDialog
+from views.components.asset_summary_card import AssetSummaryCard
+from views.components.transaction_list import TransactionList
+from views.components.expense_chart import ExpenseChart
+from views.components.budget_progress import BudgetProgress
 from config.theme import AppTheme
 from config.locales import get_text
 import logging
 
 logger = logging.getLogger("Kakeibo")
 
+from views.components.credit_card_usage import CreditCardUsage
+from views.components.bank_account_summary import BankAccountSummary
 
 class DashboardView(ft.UserControl):
     def __init__(self, page: ft.Page, db: Database, on_edit_click=None):
@@ -18,19 +24,22 @@ class DashboardView(ft.UserControl):
         self.on_edit_click = on_edit_click
         self.db = db
         self.current_month = datetime.now().strftime("%Y-%m")
-        self.all_transactions = [] # Store all transactions for current month for filtering
-
-    def build(self):
-        self.lang = self.db.get_setting("language", "en")
-        self.file_picker = ft.FilePicker(on_result=self.export_csv)
         
-        self.balance_text = ft.Text(
-            "¥0", 
-            size=40, 
-            weight=ft.FontWeight.BOLD,
-            color=ft.colors.WHITE
+        # Components
+        self.asset_summary = AssetSummaryCard(
+            on_set_savings=self.show_savings_dialog, 
+            on_set_investment=self.show_investment_dialog,
+            on_period_click=self.show_period_dialog
         )
+        self.transaction_list = TransactionList(page, db, on_edit=self.on_edit_transaction, on_refresh=self.load_data)
+        self.transaction_list.expand = True
+        self.expense_chart = ExpenseChart()
+        self.expense_chart.expand = True
+        self.credit_card_usage = CreditCardUsage()
+        self.bank_account_summary = BankAccountSummary()
+        self.budget_progress = BudgetProgress(on_set_budget=self.show_budget_dialog)
         
+        self.file_picker = ft.FilePicker(on_result=self.export_csv)
         self.month_text = ft.Text(
             self.current_month,
             size=20,
@@ -38,190 +47,372 @@ class DashboardView(ft.UserControl):
             color=ft.colors.WHITE
         )
 
-        self.total_assets_text = ft.Text(
-            "¥0",
-            size=16,
-            weight=ft.FontWeight.BOLD,
-            color=ft.colors.GREEN_400
-        )
-
-        self.liquid_assets_text = ft.Text(
-            "¥0",
-            size=16,
-            weight=ft.FontWeight.BOLD,
-            color=ft.colors.CYAN_400
-        )
-
-        self.total_liabilities_text = ft.Text(
-            "¥0",
-            size=16,
-            weight=ft.FontWeight.BOLD,
-            color=ft.colors.RED_400
-        )
-
-        self.net_assets_text = ft.Text(
-            "¥0",
-            size=24,
-            weight=ft.FontWeight.BOLD,
-            color=ft.colors.BLUE_400
-        )
-
-        self.fixed_costs_text = ft.Text(
-            "¥0",
-            size=14,
-            weight=ft.FontWeight.BOLD,
-            color=ft.colors.ORANGE_400
-        )
-
-        self.disposable_budget_text = ft.Text(
-            "¥0",
-            size=24,
-            weight=ft.FontWeight.BOLD,
-            color=ft.colors.AMBER_400
-        )
-
-        self.budget_text = ft.Text(
-            "Budget: ¥0 / ¥0",
-            size=14,
-            color=ft.colors.WHITE70
-        )
-
-        self.budget_progress = ft.ProgressBar(
-            width=300,
-            color=ft.colors.GREEN_400,
-            bgcolor=ft.colors.WHITE24,
-            value=0
-        )
+    def build(self):
+        self.lang = self.db.get_setting("language", "en")
+        self.asset_summary.lang = self.lang
+        self.expense_chart.lang = self.lang
+        self.credit_card_usage.lang = self.lang
+        self.bank_account_summary.lang = self.lang
         
-        self.set_budget_btn = ft.Container() # Placeholder for button
-        
-        self.next_payment_text = ft.Text(
-            "None",
-            size=14,
-            weight=ft.FontWeight.BOLD,
-            color=AppTheme.colors["text_primary"]
+        # Left Column Content
+        left_column = ft.Column(
+            controls=[
+                self.asset_summary,
+                ft.Divider(color=AppTheme.colors["divider"]),
+                # Navigation & Actions Row
+                ft.Row(
+                    [
+                        ft.IconButton(icon=ft.icons.CHEVRON_LEFT, on_click=self.prev_month, icon_color=AppTheme.colors["text_primary"]),
+                        self.month_text,
+                        ft.IconButton(icon=ft.icons.CHEVRON_RIGHT, on_click=self.next_month, icon_color=AppTheme.colors["text_primary"]),
+                        ft.IconButton(
+                            icon=ft.icons.DOWNLOAD, 
+                            tooltip="Export CSV", 
+                            icon_color=AppTheme.colors["text_secondary"],
+                            on_click=lambda _: self.file_picker.save_file(allowed_extensions=["csv"], file_name=f"kakeibo_{self.current_month}.csv")
+                        ),
+                        ft.IconButton(
+                            icon=ft.icons.REPEAT,
+                            tooltip="Fixed Costs",
+                            icon_color=AppTheme.colors["text_secondary"],
+                            on_click=self.show_fixed_costs_dialog
+                        )
+                    ],
+                    alignment=ft.MainAxisAlignment.CENTER,
+                ),
+                self.budget_progress,
+                self.transaction_list
+            ],
+            spacing=20,
+            expand=True,
         )
 
-        self.search_field = ft.TextField(
-            hint_text="Search",
-            prefix_icon=ft.icons.SEARCH,
-            on_change=self.filter_transactions,
-            width=300,
-            height=40,
-            content_padding=10,
-            text_size=14,
-            border_radius=20,
-            bgcolor=ft.colors.WHITE10,
-            border_color=ft.colors.TRANSPARENT,
+        # Right Column Content
+        right_column = ft.Column(
+            controls=[
+                ft.Container(content=self.expense_chart, expand=True), # Chart takes available space
+                self.bank_account_summary, # Bank accounts
+                self.credit_card_usage # Usage summary below chart
+            ],
+            spacing=20,
+            expand=True
         )
 
-        self.transactions_list = ft.ListView(
-            expand=True, 
-            spacing=10, 
-            padding=20,
-            auto_scroll=False
-        )
-
-        self.chart_container = ft.Container(
-            expand=True, 
-            padding=20
+        # Main Row
+        main_row = ft.Row(
+            controls=[
+                ft.Container(content=left_column, expand=2, padding=10),
+                ft.Container(content=right_column, expand=1, padding=10)
+            ],
+            expand=True,
+            spacing=20,
+            alignment=ft.MainAxisAlignment.START,
+            vertical_alignment=ft.CrossAxisAlignment.START
         )
 
         return ft.Container(
-            content=ft.Row(
-                controls=[
-                    self.file_picker,
-                    # Left side: Transaction List
-                    ft.Container(
-                        content=ft.Column(
-                            controls=[
-                                self._build_header(),
-                                ft.Divider(color=AppTheme.colors["divider"]),
-                                ft.Row(
-                                    [
-                                        ft.IconButton(icon=ft.icons.CHEVRON_LEFT, on_click=self.prev_month, icon_color=AppTheme.colors["text_primary"]),
-                                        self.month_text,
-                                        ft.IconButton(icon=ft.icons.CHEVRON_RIGHT, on_click=self.next_month, icon_color=AppTheme.colors["text_primary"]),
-                                        ft.IconButton(
-                                            icon=ft.icons.DOWNLOAD, 
-                                            tooltip="Export CSV", 
-                                            icon_color=AppTheme.colors["text_secondary"],
-                                            on_click=lambda _: self.file_picker.save_file(allowed_extensions=["csv"], file_name=f"kakeibo_{self.current_month}.csv")
-                                        ),
-                                        ft.IconButton(
-                                            icon=ft.icons.EDIT,
-                                            tooltip="Set Budget",
-                                            icon_color=AppTheme.colors["text_secondary"],
-                                            on_click=self.show_budget_dialog
-                                        ),
-                                        ft.IconButton(
-                                            icon=ft.icons.REPEAT,
-                                            tooltip="Fixed Costs",
-                                            icon_color=AppTheme.colors["text_secondary"],
-                                            on_click=self.show_fixed_costs_dialog
-                                        )
-                                    ],
-                                    alignment=ft.MainAxisAlignment.CENTER,
-                                ),
-                                ft.Column([
-                                    self.budget_text,
-                                    self.budget_progress,
-                                    self.set_budget_btn # Add Set Budget button container
-                                ], spacing=5, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                                ft.Row([
-                                    ft.Text("Recent Transactions", style=AppTheme.text_styles["h3"]),
-                                    self.search_field
-                                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                                self.transactions_list
-                            ],
-                            spacing=20,
-                        ),
-                        expand=2, 
-                        padding=10,
-                    ),
-                    # Right side: Chart
-                    ft.Container(
-                        content=ft.Column(
-                            controls=[
-                                ft.Text("Expense Analysis", style=AppTheme.text_styles["h3"]),
-                                self.chart_container,
-                            ],
-                            spacing=20,
-                            alignment=ft.MainAxisAlignment.START,
-                        ),
-                        expand=1, 
-                        padding=20,
-                        bgcolor=AppTheme.colors["surface"],
-                        border_radius=10,
-                    )
-                ],
-                expand=True,
-                spacing=20,
-            ),
+            content=main_row,
             expand=True,
-            padding=10,
+            padding=20,
         )
 
     def did_mount(self):
+        if self.file_picker not in self.page.overlay:
+            self.page.overlay.append(self.file_picker)
+        self.page.update()
         self.load_data()
 
-    def show_budget_dialog(self, e):
+    def _get_period_dates(self, month_str):
+        # Calculate start and end date for the period based on start_day setting
+        start_day = int(self.db.get_setting("start_day", "1"))
+        year, month = map(int, month_str.split('-'))
+        
+        if start_day == 1:
+            start_date = datetime(year, month, 1)
+            # End date is last day of month
+            if month == 12:
+                end_date = datetime(year + 1, 1, 1) - timedelta(days=1)
+            else:
+                end_date = datetime(year, month + 1, 1) - timedelta(days=1)
+        else:
+            start_date = datetime(year, month, start_day)
+            if month == 12:
+                end_date = datetime(year + 1, 1, start_day) - timedelta(days=1)
+            else:
+                end_date = datetime(year, month + 1, start_day) - timedelta(days=1)
+                
+        return start_date, end_date
+
+    def load_data(self):
+        try:
+            start_date, end_date = self._get_period_dates(self.current_month)
+            start_str = start_date.strftime("%Y-%m-%d")
+            end_str = end_date.strftime("%Y-%m-%d")
+            period_str = f"{start_date.strftime('%m/%d')} - {end_date.strftime('%m/%d')}"
+            
+            # 1. Get Transactions by Range
+            transactions = self.db.get_transactions_by_date_range(start_str, end_str)
+            self.transaction_list.set_transactions(transactions)
+            
+            # 2. Calculate Financials
+            total_income = sum(t['amount'] for t in transactions if t['type'] == 'Income')
+            total_expense = sum(t['amount'] for t in transactions if t['type'] == 'Expense')
+            
+            # 3. Get Assets & Liabilities
+            total_assets = self.db.get_total_assets()
+            
+            # 4. Get Budget & Fixed Costs & Savings/Investment Goals
+            budget = self.db.get_budget(self.current_month)
+            fixed_costs_total = sum(fc['amount'] for fc in self.db.get_fixed_costs())
+            
+            savings_goal_str = self.db.get_setting("savings_goal", "0")
+            try:
+                savings_goal = int(savings_goal_str)
+            except ValueError:
+                savings_goal = 0
+                
+            investment_goal_str = self.db.get_setting("investment_goal", "0")
+            try:
+                investment_goal = int(investment_goal_str)
+            except ValueError:
+                investment_goal = 0
+            
+            # 5. Calculate Living Budget & Variable Expenses
+            living_budget = budget - fixed_costs_total - savings_goal - investment_goal
+            
+            # Variable Expenses = Total Expenses - Fixed Costs (Planned)
+            variable_expenses = total_expense - fixed_costs_total
+            
+            # Update Components
+            self.asset_summary.update_data(
+                period_str=period_str,
+                total_income=total_income,
+                budget=budget,
+                fixed_costs=fixed_costs_total,
+                savings_goal=savings_goal,
+                investment_goal=investment_goal,
+                total_assets=total_assets
+            )
+            
+            self.budget_progress.update_budget(living_budget, variable_expenses)
+            
+            # 6. Update Chart
+            expenses = [t for t in transactions if t['type'] == 'Expense']
+            # Group by category
+            category_expenses = {}
+            for t in expenses:
+                cat = t['category']
+                category_expenses[cat] = category_expenses.get(cat, 0) + t['amount']
+            
+            sorted_expenses = sorted(
+                [{'category': k, 'amount': v} for k, v in category_expenses.items()],
+                key=lambda x: x['amount'],
+                reverse=True
+            )
+            self.expense_chart.update_chart(sorted_expenses)
+            
+            # 7. Update Credit Card Usage & Bank Account Summary
+            credit_cards = self.db.get_credit_cards()
+            card_usage = {}
+            for t in expenses:
+                if t.get('credit_card_id'):
+                    cid = t['credit_card_id']
+                    card_usage[cid] = card_usage.get(cid, 0) + t['amount']
+            
+            # Calculate Fixed Costs per Card and Account
+            fixed_costs_card_data = {}
+            fixed_costs_account_data = {}
+            fixed_costs_list = self.db.get_fixed_costs()
+            for fc in fixed_costs_list:
+                if fc.get('payment_card_id'):
+                    cid = fc['payment_card_id']
+                    fixed_costs_card_data[cid] = fixed_costs_card_data.get(cid, 0) + fc['amount']
+                if fc.get('payment_account_id'):
+                    aid = fc['payment_account_id']
+                    fixed_costs_account_data[aid] = fixed_costs_account_data.get(aid, 0) + fc['amount']
+            
+            # Calculate Next Payment for Credit Cards
+            next_payment_data = {}
+            cc_payments_account_data = {}
+            
+            for card in credit_cards:
+                card_id = card['id']
+                closing_day = card.get('closing_day', 31)
+                withdrawal_day = card.get('withdrawal_day')
+                linked_account_id = card.get('linked_account_id')
+                
+                if withdrawal_day:
+                    payment_info = self.db.calculate_next_payment(card_id, closing_day, withdrawal_day)
+                    if payment_info['amount'] > 0:
+                        next_payment_data[card_id] = payment_info
+                        
+                        if linked_account_id:
+                            cc_payments_account_data[linked_account_id] = cc_payments_account_data.get(linked_account_id, 0) + payment_info['amount']
+
+            self.credit_card_usage.update_usage(credit_cards, card_usage, fixed_costs_card_data, next_payment_data)
+            
+            # Update Bank Account Summary
+            accounts = self.db.get_accounts()
+            self.bank_account_summary.update_accounts(accounts, fixed_costs_account_data, cc_payments_account_data)
+            
+            self.month_text.value = self.current_month
+            self.month_text.update()
+            
+        except Exception as e:
+            logger.error(f"Error loading data: {e}")
+            traceback.print_exc()
+
+    def prev_month(self, e):
+        date = datetime.strptime(self.current_month, "%Y-%m")
+        prev_date = date.replace(day=1) - timedelta(days=1)
+        self.current_month = prev_date.strftime("%Y-%m")
+        self.load_data()
+
+    def next_month(self, e):
+        date = datetime.strptime(self.current_month, "%Y-%m")
+        # Add 32 days to ensure next month
+        next_date = (date.replace(day=1) + timedelta(days=32)).replace(day=1)
+        self.current_month = next_date.strftime("%Y-%m")
+        self.load_data()
+
+    def on_edit_transaction(self, transaction):
+        if self.on_edit_click:
+            self.on_edit_click(transaction)
+
+    def show_period_dialog(self, e):
+        def save_period(e):
+            try:
+                day = int(day_input.value)
+                if 1 <= day <= 28: # Simplify to avoid 29-31 issues for now
+                    self.db.set_setting("start_day", str(day))
+                    self.page.dialog.open = False
+                    self.page.update()
+                    self.load_data()
+                    snack = ft.SnackBar(ft.Text(f"Start day set to {day}"))
+                    self.page.overlay.append(snack)
+                    snack.open = True
+                    self.page.update()
+                else:
+                    day_input.error_text = "Please enter a day between 1 and 28"
+                    day_input.update()
+            except ValueError:
+                day_input.error_text = "Invalid number"
+                day_input.update()
+
         def close_dlg(e):
             self.page.dialog.open = False
             self.page.update()
 
+        current_day = self.db.get_setting("start_day", "1")
+        day_input = ft.TextField(label="Start Day of Month (1-28)", value=current_day, keyboard_type=ft.KeyboardType.NUMBER, autofocus=True)
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Set Budget Period Start Day"),
+            content=day_input,
+            actions=[
+                ft.TextButton("Cancel", on_click=close_dlg),
+                ft.TextButton("Save", on_click=save_period),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.dialog = dlg
+        dlg.open = True
+        self.page.update()
+
+    def show_savings_dialog(self, e):
+        def save_savings(e):
+            try:
+                amount = int(savings_input.value)
+                self.db.set_setting("savings_goal", str(amount))
+                self.page.dialog.open = False
+                self.page.update()
+                self.load_data()
+                snack = ft.SnackBar(ft.Text(f"Savings Goal set to ¥{amount:,}"))
+                self.page.overlay.append(snack)
+                snack.open = True
+                self.page.update()
+            except ValueError:
+                pass
+
+        def close_dlg(e):
+            self.page.dialog.open = False
+            self.page.update()
+
+        current_savings = self.db.get_setting("savings_goal", "0")
+        savings_input = ft.TextField(label="Savings Goal", value=current_savings, keyboard_type=ft.KeyboardType.NUMBER, autofocus=True)
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Set Monthly Savings Goal"),
+            content=savings_input,
+            actions=[
+                ft.TextButton("Cancel", on_click=close_dlg),
+                ft.TextButton("Save", on_click=save_savings),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.dialog = dlg
+        dlg.open = True
+        self.page.update()
+
+    def show_investment_dialog(self, e):
+        def save_investment(e):
+            try:
+                amount = int(investment_input.value)
+                self.db.set_setting("investment_goal", str(amount))
+                self.page.dialog.open = False
+                self.page.update()
+                self.load_data()
+                snack = ft.SnackBar(ft.Text(f"Investment Goal set to ¥{amount:,}"))
+                self.page.overlay.append(snack)
+                snack.open = True
+                self.page.update()
+            except ValueError:
+                pass
+
+        def close_dlg(e):
+            self.page.dialog.open = False
+            self.page.update()
+
+        current_investment = self.db.get_setting("investment_goal", "0")
+        investment_input = ft.TextField(label="Investment Goal", value=current_investment, keyboard_type=ft.KeyboardType.NUMBER, autofocus=True)
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Set Monthly Investment Goal"),
+            content=investment_input,
+            actions=[
+                ft.TextButton("Cancel", on_click=close_dlg),
+                ft.TextButton("Save", on_click=save_investment),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+        self.page.dialog = dlg
+        dlg.open = True
+        self.page.update()
+
+    def show_budget_dialog(self, e):
         def save_budget(e):
             try:
                 amount = int(budget_input.value)
-                logger.info(f"Setting budget for {self.current_month}: {amount}")
                 self.db.set_budget(self.current_month, amount)
+                self.page.dialog.open = False
+                self.page.update()
                 self.load_data()
-                close_dlg(e)
-            except ValueError as e:
-                logger.warning(f"Invalid budget input: {budget_input.value}")
+                snack = ft.SnackBar(ft.Text(f"Budget for {self.current_month} set to ¥{amount:,}"))
+                self.page.overlay.append(snack)
+                snack.open = True
+                self.page.update()
+            except ValueError:
+                pass
+
+        def close_dlg(e):
+            self.page.dialog.open = False
+            self.page.update()
 
         current_budget = self.db.get_budget(self.current_month)
-        budget_input = ft.TextField(label="Monthly Budget", value=str(current_budget), keyboard_type=ft.KeyboardType.NUMBER, autofocus=True)
+        budget_input = ft.TextField(label="Budget Amount", value=str(current_budget), keyboard_type=ft.KeyboardType.NUMBER, autofocus=True)
 
         dlg = ft.AlertDialog(
             modal=True,
@@ -238,7 +429,7 @@ class DashboardView(ft.UserControl):
         self.page.update()
 
     def show_fixed_costs_dialog(self, e):
-        dlg = FixedCostsDialog(self.page, on_dismiss=self.load_data)
+        dlg = FixedCostsDialog(self.page, self.db, on_dismiss=self.load_data)
         self.page.dialog = dlg
         dlg.open = True
         self.page.update()
@@ -263,438 +454,3 @@ class DashboardView(ft.UserControl):
                 self.page.overlay.append(snack)
                 snack.open = True
                 self.page.update()
-
-    def prev_month(self, e):
-        year, month = map(int, self.current_month.split('-'))
-        month -= 1
-        if month == 0:
-            month = 12
-            year -= 1
-        self.current_month = f"{year}-{month:02d}"
-        logger.info(f"Changed month to {self.current_month}")
-        self.month_text.value = self.current_month
-        self.load_data()
-        self.update()
-
-    def next_month(self, e):
-        year, month = map(int, self.current_month.split('-'))
-        month += 1
-        if month == 13:
-            month = 1
-            year += 1
-        self.current_month = f"{year}-{month:02d}"
-        logger.info(f"Changed month to {self.current_month}")
-        self.month_text.value = self.current_month
-        self.load_data()
-        self.update()
-
-    def _build_header(self):
-        # Asset Equation: Total Assets - Liabilities = Net Assets
-        
-        # Helper for equation cards
-        def equation_card(title, value_control, color, icon):
-            return ft.Container(
-                content=ft.Column([
-                    ft.Row([
-                        ft.Icon(icon, color=color, size=16),
-                        ft.Text(get_text(title, self.lang), size=12, color=AppTheme.colors["text_secondary"])
-                    ], spacing=5),
-                    value_control
-                ], spacing=2, alignment=ft.MainAxisAlignment.CENTER),
-                bgcolor=AppTheme.colors["surface"],
-                padding=15,
-                border_radius=10,
-                expand=True,
-            )
-        equation_row = ft.Row([
-            equation_card("total_assets", self.total_assets_text, ft.colors.GREEN_400, ft.icons.ACCOUNT_BALANCE),
-            ft.Icon(ft.icons.REMOVE, color=AppTheme.colors["text_secondary"], size=20),
-            equation_card("liabilities", self.total_liabilities_text, ft.colors.RED_400, ft.icons.CREDIT_CARD),
-            ft.Text("=", color=AppTheme.colors["text_secondary"], size=20, weight=ft.FontWeight.BOLD),
-            ft.Container(
-                content=ft.Column([
-                    ft.Row([
-                        ft.Icon(ft.icons.ACCOUNT_BALANCE_WALLET, color=AppTheme.colors["primary"], size=20),
-                        ft.Text(get_text("net_assets", self.lang), size=14, color=AppTheme.colors["text_primary"], weight=ft.FontWeight.BOLD)
-                    ], spacing=5),
-                    self.net_assets_text
-                ], spacing=2, alignment=ft.MainAxisAlignment.CENTER),
-                bgcolor=AppTheme.colors["surface"],
-                padding=15,
-                border_radius=10,
-                expand=True,
-                border=ft.border.all(1, AppTheme.colors["primary"]) # Highlight Net Assets
-            ),
-        ], spacing=10, alignment=ft.MainAxisAlignment.CENTER)
-
-        # Disposable Equation: Liquid Assets - Next Payment - Fixed Costs = Disposable
-        
-        self.next_payment_card = ft.Container(
-            content=ft.Column([
-                ft.Row([
-                    ft.Icon(ft.icons.WARNING_AMBER, color=AppTheme.colors["warning"], size=16),
-                    ft.Text(get_text("next_payment", self.lang), size=12, color=AppTheme.colors["text_secondary"])
-                ], spacing=5),
-                self.next_payment_text
-            ], spacing=2),
-            bgcolor=AppTheme.colors["surface"],
-            padding=15,
-            border_radius=10,
-            expand=True
-        )
-
-        disposable_row = ft.Row([
-            self._build_stat_card("liquid_assets", self.liquid_assets_text, ft.icons.WATER_DROP, ft.colors.CYAN_400),
-            ft.Icon(ft.icons.REMOVE, color=AppTheme.colors["text_secondary"], size=20),
-            self.next_payment_card,
-            ft.Icon(ft.icons.REMOVE, color=AppTheme.colors["text_secondary"], size=20),
-            self._build_stat_card("fixed_costs", self.fixed_costs_text, ft.icons.REPEAT, ft.colors.ORANGE_400),
-            ft.Text("=", color=AppTheme.colors["text_secondary"], size=20, weight=ft.FontWeight.BOLD),
-            ft.Container(
-                content=ft.Column([
-                    ft.Row([
-                        ft.Icon(ft.icons.WALLET, color=ft.colors.AMBER_400, size=20),
-                        ft.Text(get_text("disposable", self.lang), size=14, color=AppTheme.colors["text_primary"], weight=ft.FontWeight.BOLD)
-                    ], spacing=5),
-                    self.disposable_budget_text
-                ], spacing=2, alignment=ft.MainAxisAlignment.CENTER),
-                bgcolor=AppTheme.colors["surface"],
-                padding=15,
-                border_radius=10,
-                expand=True,
-                border=ft.border.all(1, ft.colors.AMBER_400) # Highlight Disposable
-            ),
-        ], spacing=10, alignment=ft.MainAxisAlignment.CENTER)
-
-        return ft.Column([equation_row, disposable_row], spacing=10)
-
-    def _build_stat_card(self, title_key, value_control, icon, color):
-        return ft.Container(
-            content=ft.Column([
-                ft.Row([
-                    ft.Icon(icon, color=color, size=16),
-                    ft.Text(get_text(title_key, self.lang), size=12, color=AppTheme.colors["text_secondary"])
-                ], spacing=5),
-                value_control
-            ], spacing=5),
-            bgcolor=AppTheme.colors["surface"],
-            padding=15,
-            border_radius=10,
-            expand=True,
-        )
-
-    def load_data(self):
-        logger.debug(f"Loading data for {self.current_month}")
-        try:
-            self.all_transactions = self.db.get_transactions(self.current_month)
-            # balance = self.db.get_balance(self.current_month) # Not used in new header
-            total_assets = self.db.get_total_assets()
-            liquid_assets = self.db.get_liquid_assets()
-            total_liabilities = self.db.get_total_liabilities()
-            net_assets = self.db.get_net_assets()
-            
-            # Calculate total expenses for budget
-            total_expenses = sum(t['amount'] for t in self.all_transactions if t['type'] == 'Expense')
-            
-            # Check for category budgets first
-            category_budgets = self.db.get_category_budgets()
-            total_category_budget = sum(category_budgets.values())
-            
-            if total_category_budget > 0:
-                budget = total_category_budget
-                budget_source = "(Category Sum)"
-            else:
-                budget = self.db.get_budget(self.current_month)
-                budget_source = ""
-            
-            # self.balance_text.value = f"¥{balance:,}"
-            self.total_assets_text.value = f"¥{total_assets:,}"
-            self.liquid_assets_text.value = f"¥{liquid_assets:,}"
-            self.total_liabilities_text.value = f"¥{total_liabilities:,}"
-            self.net_assets_text.value = f"¥{net_assets:,}"
-            
-            # Fixed Costs Calculation
-            fixed_costs = self.db.get_fixed_costs()
-            total_fixed_costs = sum(fc['amount'] for fc in fixed_costs)
-            disposable_budget = max(0, budget - total_fixed_costs)
-            
-            self.fixed_costs_text.value = f"¥{total_fixed_costs:,}"
-            self.disposable_budget_text.value = f"¥{disposable_budget:,}"
-            
-            # Update budget display
-            if budget > 0:
-                self.budget_progress.visible = True
-                progress = min(total_expenses / budget, 1.0)
-                remaining = budget - total_expenses
-                self.budget_progress.value = progress
-                self.budget_text.value = f"{get_text('expense', self.lang)}: ¥{total_expenses:,} / {get_text('budget', self.lang)}: ¥{budget:,} ({int(progress*100)}%) - {get_text('remaining', self.lang)}: ¥{remaining:,}"
-                self.set_budget_btn.content = None
-                
-                if progress >= 1.0:
-                    self.budget_progress.color = ft.colors.RED_400
-                elif progress >= 0.8:
-                    self.budget_progress.color = ft.colors.ORANGE_400
-                else:
-                    self.budget_progress.color = ft.colors.GREEN_400
-            else:
-                self.budget_progress.visible = False
-                self.budget_progress.value = 0
-                self.budget_text.value = get_text("set_budget_message", self.lang)
-                self.set_budget_btn.content = ft.ElevatedButton(
-                    get_text("set_budget", self.lang), 
-                    on_click=self.show_budget_dialog,
-                    style=ft.ButtonStyle(
-                        color=AppTheme.colors["text_primary"],
-                        bgcolor=AppTheme.colors["primary"],
-                    )
-                )
-
-            # Next Payment Logic
-            next_payment = self.db.get_next_payment()
-            if next_payment:
-                date_obj = datetime.strptime(next_payment['date'], "%Y-%m-%d")
-                date_str = date_obj.strftime("%b %d")
-                self.next_payment_text.value = f"{date_str}: ¥{next_payment['amount']:,}"
-                
-                # Alert if Liquid Assets < Next Payment
-                if liquid_assets < next_payment['amount']:
-                    self.next_payment_card.bgcolor = ft.colors.with_opacity(0.2, AppTheme.colors["danger"])
-                    self.next_payment_card.border = ft.border.all(1, AppTheme.colors["danger"])
-                else:
-                    self.next_payment_card.bgcolor = AppTheme.colors["surface"]
-                    self.next_payment_card.border = None
-            else:
-                self.next_payment_text.value = "None"
-                self.next_payment_card.bgcolor = AppTheme.colors["surface"]
-                self.next_payment_card.border = None
-
-            # Initial render with all transactions (or current filter)
-            self.filter_transactions(None)
-            
-            # Update Chart
-            self.update_chart()
-            
-            self.update()
-            logger.debug("Data loaded successfully")
-        except Exception as e:
-            logger.error(f"Error loading data: {e}")
-            logger.error(traceback.format_exc())
-            traceback.print_exc()
-
-    def filter_transactions(self, e):
-        query = self.search_field.value.lower() if self.search_field.value else ""
-        
-        filtered = []
-        for t in self.all_transactions:
-            if (query in t['category'].lower() or 
-                query in t.get('note', '').lower() or 
-                query in str(t['amount'])):
-                filtered.append(t)
-        
-        self.transactions_list.controls.clear()
-        
-        if not filtered:
-             self.transactions_list.controls.append(ft.Text("No transactions found", color=ft.colors.WHITE54, text_align=ft.TextAlign.CENTER))
-        
-        for t in filtered:
-            icon = ft.icons.ADD_CIRCLE if t['type'] == 'Income' else ft.icons.REMOVE_CIRCLE
-            color = ft.colors.GREEN_400 if t['type'] == 'Income' else ft.colors.RED_400
-            
-            self.transactions_list.controls.append(
-                ft.Container(
-                    content=ft.Row(
-                        [
-                            ft.Row([
-                                ft.Container(
-                                    content=ft.Icon(icon, color=color, size=24),
-                                    padding=10,
-                                    bgcolor=ft.colors.with_opacity(0.1, color),
-                                    border_radius=10,
-                                ),
-                                ft.Column([
-                                    ft.Text(t['category'], weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_primary"]),
-                                    ft.Text(datetime.strptime(t['date'], "%Y-%m-%d").strftime("%b %d (%a)"), size=12, color=AppTheme.colors["text_secondary"]),
-                                    self._get_payment_info_text(t),
-                                ], spacing=2),
-                            ]),
-                            ft.Row([
-                                ft.Text(f"¥{t['amount']:,}", size=16, weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_primary"]),
-                                ft.IconButton(
-                                    icon=ft.icons.EDIT, 
-                                    icon_size=20, 
-                                    tooltip="Edit",
-                                    icon_color=AppTheme.colors["text_secondary"],
-                                    on_click=lambda e, t=t: self.on_edit_click(t) if self.on_edit_click else None
-                                ),
-                                ft.IconButton(
-                                    icon=ft.icons.DELETE, 
-                                    icon_size=20, 
-                                    icon_color=AppTheme.colors["danger"],
-                                    tooltip="Delete",
-                                    on_click=lambda e, t_id=t['id']: self.delete_transaction(t_id)
-                                ),
-                            ])
-                        ],
-                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    ),
-                    padding=10,
-                    bgcolor=AppTheme.colors["surface"],
-                    border_radius=10,
-                    on_hover=lambda e: self.on_card_hover(e),
-                )
-            )
-        self.transactions_list.update()
-
-    def on_card_hover(self, e):
-        e.control.bgcolor = AppTheme.colors["surface_variant"] if e.data == "true" else AppTheme.colors["surface"]
-        e.control.update()
-
-
-    def delete_transaction(self, transaction_id):
-        def confirm_delete(e):
-            logger.info(f"Deleting transaction {transaction_id}")
-            self.db.delete_transaction(transaction_id)
-            self.page.dialog.open = False
-            self.page.update()
-            self.load_data()
-            snack = ft.SnackBar(ft.Text("Transaction deleted"))
-            self.page.overlay.append(snack)
-            snack.open = True
-            self.page.update()
-
-        def cancel_delete(e):
-            self.page.dialog.open = False
-            self.page.update()
-
-        dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text("Confirm Delete"),
-            content=ft.Text("Are you sure you want to delete this transaction?"),
-            actions=[
-                ft.TextButton("Cancel", on_click=cancel_delete),
-                ft.TextButton("Delete", on_click=confirm_delete, style=ft.ButtonStyle(color=ft.colors.RED)),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-        )
-        self.page.dialog = dlg
-        dlg.open = True
-        self.page.update()
-
-    def update_chart(self):
-        try:
-            logger.debug("Updating chart")
-            summary = self.db.get_monthly_summary(self.current_month)
-            expenses = summary['expenses']
-            
-            if not expenses:
-                self.chart_container.content = ft.Container(content=ft.Text("No expenses for this month", color=ft.colors.WHITE54), alignment=ft.alignment.center)
-                self.update()
-                return
-
-            # Group small categories into "Other"
-            # Top 4 categories + Other
-            if len(expenses) > 5:
-                top_expenses = expenses[:4]
-                other_amount = sum(item['amount'] for item in expenses[4:])
-                top_expenses.append({'category': get_text('other', self.lang), 'amount': other_amount})
-                expenses = top_expenses
-            
-            total_amount = sum(item['amount'] for item in expenses)
-            
-            # Colors for chart (Cool Tones)
-            colors = [
-                ft.colors.BLUE_400, ft.colors.CYAN_400, ft.colors.TEAL_400, ft.colors.INDIGO_400,
-                ft.colors.PURPLE_400, ft.colors.LIGHT_BLUE_400, ft.colors.BLUE_GREY_400,
-                ft.colors.DEEP_PURPLE_400, ft.colors.CYAN_ACCENT_400, ft.colors.TEAL_ACCENT_400
-            ]
-            
-            sections = []
-            legend_items = []
-            
-            for i, item in enumerate(expenses):
-                color = colors[i % len(colors)]
-                percentage = (item['amount'] / total_amount) * 100
-                
-                # Create Chart Section
-                sections.append(
-                    ft.PieChartSection(
-                        value=item['amount'],
-                        title=f"{int(percentage)}%",
-                        title_style=ft.TextStyle(size=12, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE),
-                        color=color,
-                        radius=50, # Donut thickness
-                    )
-                )
-                
-                # Create Legend Item
-                legend_items.append(
-                    ft.Row([
-                        ft.Container(width=12, height=12, bgcolor=color, border_radius=2),
-                        ft.Text(f"{item['category']}: {int(percentage)}%", size=12, color=ft.colors.WHITE70)
-                    ], spacing=5)
-                )
-
-            chart = ft.PieChart(
-                sections=sections,
-                sections_space=2,
-                center_space_radius=40, # Hole size
-                expand=True,
-            )
-            
-            # Stack to put Total Expense in center
-            chart_stack = ft.Stack([
-                chart,
-                ft.Container(
-                    content=ft.Column([
-                        ft.Text(get_text("total_expense", self.lang), size=10, color=AppTheme.colors["text_secondary"]),
-                        ft.Text(f"¥{total_amount:,}", size=14, weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_primary"])
-                    ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                    alignment=ft.alignment.center,
-                )
-            ], expand=True)
-            
-            # Layout: Chart + Legend
-            self.chart_container.content = ft.Column([
-                ft.Container(
-                    content=chart_stack,
-                    height=250, # Fixed height for chart
-                ),
-                ft.Container(
-                    content=ft.Row(legend_items, wrap=True, spacing=10, run_spacing=5, alignment=ft.MainAxisAlignment.CENTER),
-                    padding=10
-                )
-            ], spacing=10)
-            
-            self.update()
-            logger.debug("Chart updated")
-        except Exception as e:
-            logger.error(f"Error updating chart: {e}")
-            traceback.print_exc()
-
-    def _get_payment_info_text(self, t):
-        if t['type'] == 'Transfer' and t['account_name'] and t['credit_card_name']:
-             # Transfer Bank -> Card (Withdrawal)
-             return ft.Row([
-                ft.Icon(ft.icons.ACCOUNT_BALANCE, size=12, color=ft.colors.BLUE_200),
-                ft.Text(f"{t['account_name']}", size=10, color=ft.colors.BLUE_200),
-                ft.Icon(ft.icons.ARROW_FORWARD, size=10, color=AppTheme.colors["text_secondary"]),
-                ft.Icon(ft.icons.CREDIT_CARD, size=12, color=ft.colors.ORANGE_200),
-                ft.Text(f"{t['credit_card_name']}", size=10, color=ft.colors.ORANGE_200)
-            ], spacing=2)
-        elif t['account_name']:
-            return ft.Row([
-                ft.Icon(ft.icons.ACCOUNT_BALANCE, size=12, color=ft.colors.BLUE_200),
-                ft.Text(f"{t['account_name']}", size=10, color=ft.colors.BLUE_200)
-            ], spacing=2)
-        elif t['credit_card_name']:
-            # Just show Card for usage
-            return ft.Row([
-                ft.Icon(ft.icons.CREDIT_CARD, size=12, color=ft.colors.ORANGE_200),
-                ft.Text(f"{t['credit_card_name']}", size=10, color=ft.colors.ORANGE_200)
-            ], spacing=2)
-        else:
-            # Cash or unspecified
-            return ft.Row([
-                ft.Icon(ft.icons.MONEY, size=12, color=ft.colors.GREEN_200),
-                ft.Text(get_text("cash", self.lang), size=10, color=ft.colors.GREEN_200)
-            ], spacing=2)

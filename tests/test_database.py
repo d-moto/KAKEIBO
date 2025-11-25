@@ -17,6 +17,7 @@ class TestDatabase(unittest.TestCase):
         os.makedirs(self.test_db_dir, exist_ok=True)
         self.db_file = os.path.join(self.test_db_dir, "test_kakeibo.db")
         self.db = Database(self.db_file)
+        self.db.init_db()
 
     def tearDown(self):
         # Clean up test database
