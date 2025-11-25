@@ -1,5 +1,6 @@
 import flet as ft
 from database import Database
+from config.theme import AppTheme
 
 
 class AssetsView(ft.UserControl):
@@ -24,7 +25,7 @@ class AssetsView(ft.UserControl):
                         icon=ft.icons.SHOW_CHART,
                         content=ft.Container(
                             content=ft.Column([
-                                ft.Text("Asset Trends (30 Days)", size=20, weight=ft.FontWeight.BOLD),
+                                ft.Text("Asset Trends (30 Days)", style=AppTheme.text_styles["h2"]),
                                 self.chart_container
                             ]),
                             padding=20
@@ -36,10 +37,10 @@ class AssetsView(ft.UserControl):
                         content=ft.Container(
                             content=ft.Column([
                                 ft.Row([
-                                    ft.Text("Manage Accounts", size=20, weight=ft.FontWeight.BOLD),
-                                    ft.IconButton(icon=ft.icons.ADD, on_click=self.show_add_account_dialog, tooltip="Add Account")
+                                    ft.Text("Manage Accounts", style=AppTheme.text_styles["h2"]),
+                                    ft.IconButton(icon=ft.icons.ADD, on_click=self.show_add_account_dialog, tooltip="Add Account", icon_color=AppTheme.colors["primary"])
                                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                                ft.Divider(),
+                                ft.Divider(color=AppTheme.colors["divider"]),
                                 self.accounts_list
                             ], scroll=ft.ScrollMode.AUTO),
                             padding=20
@@ -51,10 +52,10 @@ class AssetsView(ft.UserControl):
                         content=ft.Container(
                             content=ft.Column([
                                 ft.Row([
-                                    ft.Text("Manage Credit Cards", size=20, weight=ft.FontWeight.BOLD),
-                                    ft.IconButton(icon=ft.icons.ADD, on_click=self.show_add_card_dialog, tooltip="Add Credit Card")
+                                    ft.Text("Manage Credit Cards", style=AppTheme.text_styles["h2"]),
+                                    ft.IconButton(icon=ft.icons.ADD, on_click=self.show_add_card_dialog, tooltip="Add Credit Card", icon_color=AppTheme.colors["primary"])
                                 ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                                ft.Divider(),
+                                ft.Divider(color=AppTheme.colors["divider"]),
                                 self.credit_cards_list
                             ], scroll=ft.ScrollMode.AUTO),
                             padding=20
@@ -62,14 +63,12 @@ class AssetsView(ft.UserControl):
                     ),
                 ],
                 expand=True,
+                indicator_color=AppTheme.colors["primary"],
+                label_color=AppTheme.colors["primary"],
+                unselected_label_color=AppTheme.colors["text_secondary"],
             ),
-            padding=20,
+            padding=10,
             expand=True,
-            gradient=ft.LinearGradient(
-                begin=ft.alignment.top_left,
-                end=ft.alignment.bottom_right,
-                colors=[ft.colors.BLUE_GREY_900, ft.colors.BLACK],
-            )
         )
 
     def did_mount(self):
@@ -96,7 +95,7 @@ class AssetsView(ft.UserControl):
                 ft.LineChartDataPoint(
                     i, 
                     amount,
-                    tooltip=f"{d['date']}\n¥{amount:,}",
+                    tooltip=f"{d['date']}\n{amount:,} JPY",
                 )
             )
             min_y = min(min_y, amount)
@@ -115,28 +114,28 @@ class AssetsView(ft.UserControl):
                 ft.LineChartData(
                     data_points=data_points,
                     stroke_width=3,
-                    color=ft.colors.CYAN,
+                    color=AppTheme.colors["accent"],
                     curved=True,
                     stroke_cap_round=True,
-                    below_line_bgcolor=ft.colors.with_opacity(0.2, ft.colors.CYAN),
+                    below_line_bgcolor=ft.colors.with_opacity(0.2, AppTheme.colors["accent"]),
                 )
             ],
-            border=ft.border.all(1, ft.colors.WHITE10),
+            border=ft.border.all(1, AppTheme.colors["divider"]),
             left_axis=ft.ChartAxis(
                 labels_size=40,
-                title=ft.Text("Amount", size=10),
+                title=ft.Text("Amount", size=10, color=AppTheme.colors["text_secondary"]),
                 title_size=20,
             ),
             bottom_axis=ft.ChartAxis(
                 labels=[
                     ft.ChartAxisLabel(
                         value=i,
-                        label=ft.Text(d['date'][5:], size=10, weight=ft.FontWeight.BOLD)
+                        label=ft.Text(d['date'][5:], size=10, weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_secondary"])
                     ) for i, d in enumerate(trend_data) if i % 5 == 0 # Show every 5th label
                 ],
                 labels_size=20,
             ),
-            tooltip_bgcolor=ft.colors.with_opacity(0.8, ft.colors.BLUE_GREY_900),
+            tooltip_bgcolor=AppTheme.colors["surface_variant"],
             min_y=min_y,
             max_y=max_y,
             expand=True,
@@ -192,24 +191,37 @@ class AssetsView(ft.UserControl):
                     ft.Container(
                         content=ft.Row([
                             ft.Row([
-                                ft.Icon(self._get_icon_for_type(atype), color=ft.colors.BLUE_400),
+                                ft.Container(
+                                    content=ft.Icon(self._get_icon_for_type(atype), color=AppTheme.colors["primary"]),
+                                    padding=10,
+                                    bgcolor=ft.colors.with_opacity(0.1, AppTheme.colors["primary"]),
+                                    border_radius=10,
+                                ),
                                 ft.Column([
-                                    ft.Text(acc['name'], weight=ft.FontWeight.BOLD, size=16),
-                                    ft.Text(f"Type: {acc['type']}", size=12, color=ft.colors.WHITE54),
+                                    ft.Text(acc['name'], weight=ft.FontWeight.BOLD, size=16, color=AppTheme.colors["text_primary"]),
+                                    ft.Text(f"Type: {acc['type']}", size=12, color=AppTheme.colors["text_secondary"]),
                                 ], spacing=2),
                             ]),
                             ft.Row([
-                                ft.Text(f"¥{acc['balance']:,}", size=16, weight=ft.FontWeight.BOLD),
+                                ft.Text(f"¥{acc['balance']:,}", size=16, weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_primary"]),
+                                ft.IconButton(
+                                    icon=ft.icons.EDIT, 
+                                    icon_color=AppTheme.colors["text_secondary"], 
+                                    tooltip="Edit Account",
+                                    on_click=lambda e, a=acc: self.show_add_account_dialog(e, account=a)
+                                ),
                                 ft.IconButton(
                                     icon=ft.icons.DELETE, 
-                                    icon_color=ft.colors.RED_400, 
+                                    icon_color=AppTheme.colors["danger"], 
+                                    tooltip="Delete Account",
                                     on_click=lambda e, aid=acc['id']: self.delete_account(aid)
                                 )
                             ])
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         padding=15,
-                        bgcolor=ft.colors.WHITE10,
-                        border_radius=10
+                        bgcolor=AppTheme.colors["surface"],
+                        border_radius=10,
+                        on_hover=lambda e: self.on_card_hover(e)
                     )
                 )
         self.update()
@@ -235,27 +247,48 @@ class AssetsView(ft.UserControl):
                 ft.Container(
                     content=ft.Row([
                         ft.Row([
-                            ft.Icon(ft.icons.CREDIT_CARD, color=ft.colors.ORANGE_400),
+                            ft.Container(
+                                content=ft.Icon(ft.icons.CREDIT_CARD, color=AppTheme.colors["warning"]),
+                                padding=10,
+                                bgcolor=ft.colors.with_opacity(0.1, AppTheme.colors["warning"]),
+                                border_radius=10,
+                            ),
                             ft.Column([
-                                ft.Text(card['name'], weight=ft.FontWeight.BOLD, size=16),
-                                ft.Text(f"Linked: {linked_acc} (Day {card['withdrawal_day']})", size=12, color=ft.colors.WHITE54),
+                                ft.Text(card['name'], weight=ft.FontWeight.BOLD, size=16, color=AppTheme.colors["text_primary"]),
+                                ft.Text(f"Linked: {linked_acc} (Day {card['withdrawal_day']})", size=12, color=AppTheme.colors["text_secondary"]),
                             ], spacing=2),
                         ]),
-                        ft.IconButton(
-                            icon=ft.icons.DELETE, 
-                            icon_color=ft.colors.RED_400, 
-                            on_click=lambda e, cid=card['id']: self.delete_credit_card(cid)
-                        )
+                        ft.Row([
+                            ft.Text(f"¥{card.get('balance', 0):,}", size=16, weight=ft.FontWeight.BOLD, color=AppTheme.colors["danger"]),
+                            ft.IconButton(
+                                icon=ft.icons.EDIT, 
+                                icon_color=AppTheme.colors["text_secondary"], 
+                                tooltip="Edit Card",
+                                on_click=lambda e, c=card: self.show_add_card_dialog(e, card=c)
+                            ),
+                            ft.IconButton(
+                                icon=ft.icons.DELETE, 
+                                icon_color=AppTheme.colors["danger"], 
+                                tooltip="Delete Card",
+                                on_click=lambda e, cid=card['id']: self.delete_credit_card(cid)
+                            )
+                        ])
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     padding=15,
-                    bgcolor=ft.colors.WHITE10,
-                    border_radius=10
+                    bgcolor=AppTheme.colors["surface"],
+                    border_radius=10,
+                    on_hover=lambda e: self.on_card_hover(e)
                 )
             )
+
         self.update()
 
-    def show_add_account_dialog(self, e):
-        name_field = ft.TextField(label="Account Name", autofocus=True)
+    def show_add_account_dialog(self, e, account=None):
+        # Load potential link sources
+        accounts = self.db.get_accounts()
+        cards = self.db.get_credit_cards()
+        
+        name_field = ft.TextField(label="Account Name", autofocus=True, value=account['name'] if account else "")
         type_field = ft.Dropdown(
             label="Type",
             options=[
@@ -266,38 +299,93 @@ class AssetsView(ft.UserControl):
                 ft.dropdown.Option("Stock"),
                 ft.dropdown.Option("Other"),
             ],
-            value="Bank"
+            value=account['asset_type'] if account else "Bank",
+            on_change=lambda e: update_visibility()
         )
-        balance_field = ft.TextField(label="Initial Balance", value="0", keyboard_type=ft.KeyboardType.NUMBER)
+        balance_field = ft.TextField(label="Current Balance", value=str(account['balance']) if account else "0", keyboard_type=ft.KeyboardType.NUMBER)
+        
+        # Linking fields
+        link_account_field = ft.Dropdown(
+            label="Link Funding Account (Bank)",
+            options=[ft.dropdown.Option(key=str(a['id']), text=a['name']) for a in accounts],
+            visible=False,
+            value=str(account['linked_account_id']) if account and account['linked_account_id'] else None
+        )
+        link_card_field = ft.Dropdown(
+            label="Link Funding Card",
+            options=[ft.dropdown.Option(key=str(c['id']), text=c['name']) for c in cards],
+            visible=False,
+            value=str(account['linked_card_id']) if account and account['linked_card_id'] else None
+        )
+
+        def update_visibility():
+            is_investment = type_field.value in ["Investment", "Stock"]
+            link_account_field.visible = is_investment
+            link_card_field.visible = is_investment
+            if self.page.dialog:
+                self.page.dialog.update()
+
+        # Initial visibility check
+        is_investment = type_field.value in ["Investment", "Stock"]
+        link_account_field.visible = is_investment
+        link_card_field.visible = is_investment
 
         def save(e):
             if not name_field.value:
                 return
             try:
                 bal = int(balance_field.value)
-                self.db.add_account(name_field.value, type_field.value, bal, asset_type=type_field.value)
+                linked_acc_id = int(link_account_field.value) if link_account_field.value and link_account_field.visible else None
+                linked_card_id = int(link_card_field.value) if link_card_field.value and link_card_field.visible else None
+                
+                if account:
+                    self.db.update_account(
+                        account['id'],
+                        name_field.value,
+                        type_field.value, # type and asset_type are same for now
+                        bal,
+                        asset_type=type_field.value,
+                        linked_account_id=linked_acc_id,
+                        linked_card_id=linked_card_id
+                    )
+                    self.show_snack("Account updated")
+                else:
+                    self.db.add_account(
+                        name_field.value, 
+                        type_field.value, 
+                        bal, 
+                        asset_type=type_field.value,
+                        linked_account_id=linked_acc_id,
+                        linked_card_id=linked_card_id
+                    )
+                    self.show_snack("Account added")
+                
                 self.page.dialog.open = False
                 self.page.update()
                 self.load_accounts()
-                self.show_snack("Account added")
             except ValueError:
-                pass
+                self.show_snack("Invalid input")
+            except Exception as ex:
+                import traceback
+                traceback.print_exc()
+                self.show_snack(f"Error: {ex}")
 
-        self.show_dialog("Add Account", [name_field, type_field, balance_field], save)
+        title = "Edit Account" if account else "Add Account"
+        self.show_dialog(title, [name_field, type_field, balance_field, link_account_field, link_card_field], save)
 
-    def show_add_card_dialog(self, e):
+    def show_add_card_dialog(self, e, card=None):
         accounts = self.db.get_accounts()
         if not accounts:
             self.show_snack("Please add a bank account first.")
             return
 
-        name_field = ft.TextField(label="Card Name", autofocus=True)
+        name_field = ft.TextField(label="Card Name", autofocus=True, value=card['name'] if card else "")
         account_field = ft.Dropdown(
             label="Linked Account",
-            options=[ft.dropdown.Option(key=a['id'], text=a['name']) for a in accounts],
-            value=accounts[0]['id']
+            options=[ft.dropdown.Option(key=str(a['id']), text=a['name']) for a in accounts],
+            value=str(card['linked_account_id']) if card else str(accounts[0]['id'])
         )
-        day_field = ft.TextField(label="Withdrawal Day (1-31)", value="27", keyboard_type=ft.KeyboardType.NUMBER)
+        day_field = ft.TextField(label="Withdrawal Day (1-31)", value=str(card['withdrawal_day']) if card else "27", keyboard_type=ft.KeyboardType.NUMBER)
 
         def save(e):
             if not name_field.value:
@@ -306,15 +394,22 @@ class AssetsView(ft.UserControl):
                 day = int(day_field.value)
                 if not (1 <= day <= 31):
                     raise ValueError
-                self.db.add_credit_card(name_field.value, int(account_field.value), day)
+                
+                if card:
+                    self.db.update_credit_card(card['id'], name_field.value, int(account_field.value), day)
+                    self.show_snack("Credit Card updated")
+                else:
+                    self.db.add_credit_card(name_field.value, int(account_field.value), day)
+                    self.show_snack("Credit Card added")
+                
                 self.page.dialog.open = False
                 self.page.update()
                 self.load_credit_cards()
-                self.show_snack("Credit Card added")
             except ValueError:
                 self.show_snack("Invalid day")
 
-        self.show_dialog("Add Credit Card", [name_field, account_field, day_field], save)
+        title = "Edit Credit Card" if card else "Add Credit Card"
+        self.show_dialog(title, [name_field, account_field, day_field], save)
 
     def show_dialog(self, title, content_list, on_save):
         def close(e):
@@ -350,3 +445,7 @@ class AssetsView(ft.UserControl):
         self.page.overlay.append(snack)
         snack.open = True
         self.page.update()
+
+    def on_card_hover(self, e):
+        e.control.bgcolor = AppTheme.colors["surface_variant"] if e.data == "true" else AppTheme.colors["surface"]
+        e.control.update()

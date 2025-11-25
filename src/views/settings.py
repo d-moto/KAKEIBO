@@ -3,6 +3,8 @@ from database import Database
 from datetime import datetime
 import csv
 from views.fixed_costs_dialog import FixedCostsDialog
+from config.theme import AppTheme
+from config.locales import get_text
 
 class SettingsView(ft.UserControl):
     def __init__(self, page: ft.Page):
@@ -12,6 +14,19 @@ class SettingsView(ft.UserControl):
 
     def build(self):
         current_encoding = self.db.get_setting("csv_encoding", "Shift-JIS")
+        current_lang = self.db.get_setting("language", "en")
+
+        self.language_dropdown = ft.Dropdown(
+            label="Language",
+            options=[
+                ft.dropdown.Option("en", "English"),
+                ft.dropdown.Option("ja", "Japanese"),
+            ],
+            value=current_lang,
+            width=200,
+            border_color=AppTheme.colors["text_secondary"],
+            color=AppTheme.colors["text_primary"],
+        )
 
         self.encoding_dropdown = ft.Dropdown(
             label="CSV Encoding",
@@ -22,7 +37,8 @@ class SettingsView(ft.UserControl):
             ],
             value=current_encoding,
             width=200,
-            border_color=ft.colors.WHITE54,
+            border_color=AppTheme.colors["text_secondary"],
+            color=AppTheme.colors["text_primary"],
         )
 
 
@@ -31,14 +47,16 @@ class SettingsView(ft.UserControl):
         self.category_budgets_list = ft.Column(spacing=10)
 
         # Category Management UI
-        self.new_category_name = ft.TextField(label="New Category Name", expand=True)
+        self.new_category_name = ft.TextField(label="New Category Name", expand=True, border_color=AppTheme.colors["text_secondary"], color=AppTheme.colors["text_primary"])
         self.new_category_type = ft.Dropdown(
             options=[
                 ft.dropdown.Option("Expense"),
                 ft.dropdown.Option("Income"),
             ],
             value="Expense",
-            width=150
+            width=150,
+            border_color=AppTheme.colors["text_secondary"],
+            color=AppTheme.colors["text_primary"],
         )
         self.categories_list = ft.ListView(spacing=5, padding=10)
 
@@ -49,28 +67,35 @@ class SettingsView(ft.UserControl):
         return ft.Container(
             content=ft.Column(
                 [
-                    ft.Text("Settings", size=24, weight=ft.FontWeight.BOLD),
-                    ft.Divider(),
+                    ft.Text("Settings", style=AppTheme.text_styles["h1"]),
+                    ft.Divider(color=AppTheme.colors["divider"]),
+
+                    # Language Settings
+                    ft.Text("Language Settings", style=AppTheme.text_styles["h2"]),
+                    self.language_dropdown,
+                    
+                    ft.Divider(color=AppTheme.colors["divider"]),
                     
                     # CSV Settings
-                    ft.Text("CSV Export Settings", size=16, weight=ft.FontWeight.BOLD),
-                    ft.Text("Select the encoding for CSV files. Use 'Shift-JIS' for Excel on Windows.", size=12, color=ft.colors.WHITE54),
+                    ft.Text("CSV Export Settings", style=AppTheme.text_styles["h2"]),
+                    ft.Text("Select the encoding for CSV files. Use 'Shift-JIS' for Excel on Windows.", style=AppTheme.text_styles["body"]),
                     self.encoding_dropdown,
                     ft.ElevatedButton(
                         "Save Settings",
                         on_click=self.save_settings,
                         style=ft.ButtonStyle(
-                            color=ft.colors.WHITE,
-                            bgcolor=ft.colors.BLUE_600,
+                            color=AppTheme.colors["text_primary"],
+                            bgcolor=AppTheme.colors["primary"],
                             padding=15,
+                            shape=ft.RoundedRectangleBorder(radius=10),
                         ),
                         width=200,
                     ),
                     
-                    ft.Divider(),
+                    ft.Divider(color=AppTheme.colors["divider"]),
 
                     # Data Management
-                    ft.Text("Data Management", size=16, weight=ft.FontWeight.BOLD),
+                    ft.Text("Data Management", style=AppTheme.text_styles["h2"]),
                     ft.Row([
                         ft.ElevatedButton(
                             "Export All Data",
@@ -80,8 +105,9 @@ class SettingsView(ft.UserControl):
                                 file_name=f"kakeibo_all_{datetime.now().strftime('%Y%m%d')}.csv"
                             ),
                             style=ft.ButtonStyle(
-                                color=ft.colors.WHITE,
-                                bgcolor=ft.colors.GREEN_600,
+                                color=AppTheme.colors["text_primary"],
+                                bgcolor=AppTheme.colors["success"],
+                                shape=ft.RoundedRectangleBorder(radius=10),
                             ),
                         ),
                         ft.ElevatedButton(
@@ -92,21 +118,22 @@ class SettingsView(ft.UserControl):
                                 allow_multiple=False
                             ),
                             style=ft.ButtonStyle(
-                                color=ft.colors.WHITE,
-                                bgcolor=ft.colors.ORANGE_600,
+                                color=AppTheme.colors["text_primary"],
+                                bgcolor=AppTheme.colors["warning"],
+                                shape=ft.RoundedRectangleBorder(radius=10),
                             ),
                         ),
                     ]),
-                    ft.Text("Importing will append data and skip duplicates.", size=12, color=ft.colors.WHITE54),
+                    ft.Text("Importing will append data and skip duplicates.", style=AppTheme.text_styles["caption"]),
 
-                    ft.Divider(),
+                    ft.Divider(color=AppTheme.colors["divider"]),
 
                     # Category Budgets
-                    ft.Text("Category Budgets (Default)", size=16, weight=ft.FontWeight.BOLD),
-                    ft.Text("Set default monthly budgets for each category.", size=12, color=ft.colors.WHITE54),
+                    ft.Text("Category Budgets (Default)", style=AppTheme.text_styles["h2"]),
+                    ft.Text("Set default monthly budgets for each category.", style=AppTheme.text_styles["body"]),
                     ft.Container(
                         content=self.category_budgets_list,
-                        bgcolor=ft.colors.WHITE10,
+                        bgcolor=AppTheme.colors["surface"],
                         border_radius=10,
                         padding=10,
                     ),
@@ -114,40 +141,42 @@ class SettingsView(ft.UserControl):
                         "Save Category Budgets",
                         on_click=self.save_category_budgets,
                         style=ft.ButtonStyle(
-                            color=ft.colors.WHITE,
-                            bgcolor=ft.colors.BLUE_600,
+                            color=AppTheme.colors["text_primary"],
+                            bgcolor=AppTheme.colors["primary"],
+                            shape=ft.RoundedRectangleBorder(radius=10),
                         ),
                     ),
                     
-                    ft.Divider(),
+                    ft.Divider(color=AppTheme.colors["divider"]),
 
                     # Category Management
-                    ft.Text("Category Management", size=20, weight=ft.FontWeight.BOLD),
+                    ft.Text("Category Management", style=AppTheme.text_styles["h2"]),
                     ft.Row([
                         self.new_category_name,
                         self.new_category_type,
-                        ft.IconButton(icon=ft.icons.ADD, on_click=self.add_category, bgcolor=ft.colors.GREEN_400, icon_color=ft.colors.WHITE)
+                        ft.IconButton(icon=ft.icons.ADD, on_click=self.add_category, bgcolor=AppTheme.colors["success"], icon_color=AppTheme.colors["text_primary"])
                     ]),
                     ft.Container(
                         content=self.categories_list,
                         height=300,
-                        bgcolor=ft.colors.WHITE10,
+                        bgcolor=AppTheme.colors["surface"],
                         border_radius=10,
                         padding=0, # Padding handled by ListView
                     ),
 
-                    ft.Divider(),
+                    ft.Divider(color=AppTheme.colors["divider"]),
 
                     # Fixed Costs Settings
-                    ft.Text("Fixed Costs (Recurring)", size=16, weight=ft.FontWeight.BOLD),
-                    ft.Text("Automatically add these transactions every month.", size=12, color=ft.colors.WHITE54),
+                    ft.Text("Fixed Costs (Recurring)", style=AppTheme.text_styles["h2"]),
+                    ft.Text("Automatically add these transactions every month.", style=AppTheme.text_styles["body"]),
                     ft.ElevatedButton(
                         "Manage Fixed Costs",
                         icon=ft.icons.REPEAT,
                         on_click=self.show_fixed_costs_dialog,
                         style=ft.ButtonStyle(
-                            color=ft.colors.WHITE,
-                            bgcolor=ft.colors.TEAL_600,
+                            color=AppTheme.colors["text_primary"],
+                            bgcolor=AppTheme.colors["accent"],
+                            shape=ft.RoundedRectangleBorder(radius=10),
                         )
                     )
                 ],
@@ -157,11 +186,6 @@ class SettingsView(ft.UserControl):
             ),
             padding=30,
             expand=True,
-            gradient=ft.LinearGradient(
-                begin=ft.alignment.top_left,
-                end=ft.alignment.bottom_right,
-                colors=[ft.colors.BLUE_GREY_900, ft.colors.BLACK],
-            )
         )
 
     def did_mount(self):
@@ -236,7 +260,7 @@ class SettingsView(ft.UserControl):
                         )
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     padding=5,
-                    bgcolor=ft.colors.WHITE10,
+                    bgcolor=AppTheme.colors["surface"],
                     border_radius=5
                 )
             )
@@ -294,8 +318,10 @@ class SettingsView(ft.UserControl):
 
     def save_settings(self, e):
         encoding = self.encoding_dropdown.value
+        lang = self.language_dropdown.value
         self.db.set_setting("csv_encoding", encoding)
-        snack = ft.SnackBar(ft.Text("Settings saved!"))
+        self.db.set_setting("language", lang)
+        snack = ft.SnackBar(ft.Text("Settings saved! Please restart app to apply language changes."))
         self.page.overlay.append(snack)
         snack.open = True
         self.page.update()

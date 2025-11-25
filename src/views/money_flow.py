@@ -1,6 +1,7 @@
 import flet as ft
 from database import Database
 from datetime import datetime
+from config.theme import AppTheme
 
 
 class MoneyFlowView(ft.UserControl):
@@ -12,9 +13,7 @@ class MoneyFlowView(ft.UserControl):
         self.chart_container = ft.Container(expand=True)
         self.month_text = ft.Text(
             self.current_month, 
-            size=20, 
-            weight=ft.FontWeight.BOLD,
-            color=ft.colors.WHITE
+            style=AppTheme.text_styles["h2"]
         )
 
     def build(self):
@@ -26,29 +25,24 @@ class MoneyFlowView(ft.UserControl):
                             ft.IconButton(
                                 icon=ft.icons.ARROW_BACK_IOS, 
                                 on_click=self.prev_month,
-                                icon_color=ft.colors.WHITE
+                                icon_color=AppTheme.colors["text_primary"]
                             ),
                             self.month_text,
                             ft.IconButton(
                                 icon=ft.icons.ARROW_FORWARD_IOS, 
                                 on_click=self.next_month,
-                                icon_color=ft.colors.WHITE
+                                icon_color=AppTheme.colors["text_primary"]
                             ),
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
                     ),
-                    ft.Divider(),
+                    ft.Divider(color=AppTheme.colors["divider"]),
                     self.chart_container
                 ],
                 expand=True,
             ),
             padding=20,
             expand=True,
-            gradient=ft.LinearGradient(
-                begin=ft.alignment.top_left,
-                end=ft.alignment.bottom_right,
-                colors=[ft.colors.BLUE_GREY_900, ft.colors.BLACK],
-            )
         )
 
     def did_mount(self):
@@ -88,7 +82,7 @@ class MoneyFlowView(ft.UserControl):
             total_expenses = data['total_expenses']
             
             if total_income == 0 and total_expenses == 0:
-                self.chart_container.content = ft.Container(content=ft.Text("No data for this month.", color=ft.colors.WHITE54), alignment=ft.alignment.center)
+                self.chart_container.content = ft.Container(content=ft.Text("No data for this month.", color=AppTheme.colors["text_secondary"]), alignment=ft.alignment.center)
                 self.update()
                 return
 
@@ -165,14 +159,14 @@ class MoneyFlowView(ft.UserControl):
                 ],
                 bottom_axis=ft.ChartAxis(
                     labels=[
-                        ft.ChartAxisLabel(value=0, label=ft.Text("Income", weight=ft.FontWeight.BOLD)),
-                        ft.ChartAxisLabel(value=1, label=ft.Text("Outflow", weight=ft.FontWeight.BOLD)),
+                        ft.ChartAxisLabel(value=0, label=ft.Text("Income", weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_primary"])),
+                        ft.ChartAxisLabel(value=1, label=ft.Text("Outflow", weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_primary"])),
                     ],
                 ),
-                left_axis=ft.ChartAxis(labels_size=40, title=ft.Text("Amount"), title_size=20),
-                border=ft.border.all(1, ft.colors.WHITE10),
+                left_axis=ft.ChartAxis(labels_size=40, title=ft.Text("Amount", color=AppTheme.colors["text_secondary"]), title_size=20),
+                border=ft.border.all(1, AppTheme.colors["divider"]),
                 expand=True,
-                tooltip_bgcolor=ft.colors.with_opacity(0.8, ft.colors.BLUE_GREY_900),
+                tooltip_bgcolor=AppTheme.colors["surface_variant"],
                 max_y=max(total_income, current_y) * 1.1
             )
 
@@ -204,7 +198,7 @@ class MoneyFlowView(ft.UserControl):
             breakdown_container = ft.Container(
                 content=ft.Column(breakdown_items, scroll=ft.ScrollMode.AUTO),
                 padding=20,
-                bgcolor=ft.colors.WHITE10,
+                bgcolor=AppTheme.colors["surface"],
                 border_radius=10,
                 expand=True
             )
@@ -215,7 +209,7 @@ class MoneyFlowView(ft.UserControl):
                 ft.Container(
                     content=ft.Column([
                         ft.Container(content=chart, expand=2),
-                        ft.Container(content=summary_row, padding=10, bgcolor=ft.colors.WHITE10, border_radius=10)
+                        ft.Container(content=summary_row, padding=10, bgcolor=AppTheme.colors["surface"], border_radius=10)
                     ]),
                     expand=2,
                     padding=10
@@ -235,11 +229,11 @@ class MoneyFlowView(ft.UserControl):
 
     def _build_summary_card(self, title, amount, color, subtext=None):
         content = [
-            ft.Text(title, size=12, color=ft.colors.WHITE70),
+            ft.Text(title, size=12, color=AppTheme.colors["text_secondary"]),
             ft.Text(f"¥{amount:,}", size=18, weight=ft.FontWeight.BOLD, color=color)
         ]
         if subtext:
-            content.append(ft.Text(subtext, size=12, color=ft.colors.WHITE54))
+            content.append(ft.Text(subtext, size=12, color=AppTheme.colors["text_secondary"]))
             
         return ft.Column(content, horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2)
 
@@ -248,9 +242,9 @@ class MoneyFlowView(ft.UserControl):
             content=ft.Row([
                 ft.Row([
                     ft.Container(width=10, height=10, bgcolor=color, border_radius=2),
-                    ft.Text(item['category'], size=14)
+                    ft.Text(item['category'], size=14, color=AppTheme.colors["text_primary"])
                 ]),
-                ft.Text(f"¥{item['amount']:,}", size=14, weight=ft.FontWeight.BOLD)
+                ft.Text(f"¥{item['amount']:,}", size=14, weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_primary"])
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
             padding=5
         )

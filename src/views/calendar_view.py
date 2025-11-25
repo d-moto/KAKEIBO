@@ -2,6 +2,7 @@ import flet as ft
 from database import Database
 from datetime import datetime
 import calendar
+from config.theme import AppTheme
 
 class CalendarView(ft.UserControl):
     def __init__(self, page: ft.Page):
@@ -14,9 +15,7 @@ class CalendarView(ft.UserControl):
     def build(self):
         self.month_text = ft.Text(
             self.current_month,
-            size=20,
-            weight=ft.FontWeight.BOLD,
-            color=ft.colors.WHITE
+            style=AppTheme.text_styles["h2"]
         )
 
         return ft.Container(
@@ -24,13 +23,13 @@ class CalendarView(ft.UserControl):
                 [
                     ft.Row(
                         [
-                            ft.IconButton(icon=ft.icons.CHEVRON_LEFT, on_click=self.prev_month),
+                            ft.IconButton(icon=ft.icons.CHEVRON_LEFT, on_click=self.prev_month, icon_color=AppTheme.colors["text_primary"]),
                             self.month_text,
-                            ft.IconButton(icon=ft.icons.CHEVRON_RIGHT, on_click=self.next_month),
+                            ft.IconButton(icon=ft.icons.CHEVRON_RIGHT, on_click=self.next_month, icon_color=AppTheme.colors["text_primary"]),
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
                     ),
-                    ft.Divider(),
+                    ft.Divider(color=AppTheme.colors["divider"]),
                     self._build_week_header(),
                     ft.Container(
                         content=self.calendar_grid,
@@ -41,11 +40,6 @@ class CalendarView(ft.UserControl):
             ),
             padding=20,
             expand=True,
-            gradient=ft.LinearGradient(
-                begin=ft.alignment.top_left,
-                end=ft.alignment.bottom_right,
-                colors=[ft.colors.BLUE_GREY_900, ft.colors.BLACK],
-            )
         )
 
     def did_mount(self):
@@ -56,7 +50,7 @@ class CalendarView(ft.UserControl):
         return ft.Row(
             [
                 ft.Container(
-                    content=ft.Text(day, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE70),
+                    content=ft.Text(day, weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_secondary"]),
                     expand=1,
                     alignment=ft.alignment.center
                 ) for day in days
@@ -114,13 +108,13 @@ class CalendarView(ft.UserControl):
                         )
                     if income > 0 or expense > 0:
                          content_col.controls.append(
-                            ft.Text(f"¥{balance:,}", size=10, color=ft.colors.WHITE70, weight=ft.FontWeight.BOLD)
+                            ft.Text(f"¥{balance:,}", size=10, color=AppTheme.colors["text_secondary"], weight=ft.FontWeight.BOLD)
                         )
                     
                     cell = ft.Container(
                         content=content_col,
                         expand=1,
-                        bgcolor=ft.colors.WHITE10,
+                        bgcolor=AppTheme.colors["surface"],
                         border_radius=5,
                         padding=5,
                         height=90,

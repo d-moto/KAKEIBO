@@ -15,10 +15,18 @@ def main(page: ft.Page):
     page.title = "KAKEIBO - Premium"
     
     # Load theme
+    # Load theme
+    from config.theme import AppTheme
     from database import Database
     db = Database()
-    theme = db.get_setting("theme", "dark")
-    page.theme_mode = ft.ThemeMode.DARK if theme == "dark" else ft.ThemeMode.LIGHT
+    
+    # Force Dark Mode for now as per design requirement
+    page.theme_mode = ft.ThemeMode.DARK
+    page.bgcolor = AppTheme.colors["background"]
+    page.fonts = {
+        "Roboto": "https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap"
+    }
+    page.theme = AppTheme.get_theme()
     
     page.window.width = 1000
     page.window.height = 800
@@ -98,18 +106,10 @@ def main(page: ft.Page):
             page.update()
 
         # AppBar with Theme Toggle
-        page.appbar = ft.AppBar(
-            title=ft.Text("KAKEIBO"),
-            center_title=True,
-            bgcolor=ft.colors.SURFACE_VARIANT,
-            actions=[
-                ft.IconButton(
-                    icon=ft.icons.DARK_MODE if page.theme_mode == ft.ThemeMode.LIGHT else ft.icons.LIGHT_MODE,
-                    on_click=toggle_theme,
-                    tooltip="Toggle Theme"
-                )
-            ]
-        )
+        # AppBar (Simplified for modern look)
+        # We can remove the default AppBar and use a custom header in the content area if needed.
+        # For now, let's keep it minimal or remove it to match Discord style.
+        page.appbar = None
 
         def change_route(e):
             from datetime import datetime
@@ -148,59 +148,74 @@ def main(page: ft.Page):
 
         rail = ft.NavigationRail(
             selected_index=0,
-            label_type=ft.NavigationRailLabelType.ALL,
-            min_width=100,
-            min_extended_width=400,
+            label_type=ft.NavigationRailLabelType.NONE, # Icon only for Discord style
+            min_width=72,
+            min_extended_width=72,
             group_alignment=-0.9,
             destinations=[
                 ft.NavigationRailDestination(
                     icon=ft.icons.DASHBOARD_OUTLINED, 
                     selected_icon=ft.icons.DASHBOARD, 
-                    label="Dashboard"
+                    label="Dashboard",
+                    padding=ft.padding.symmetric(vertical=10)
                 ),
                 ft.NavigationRailDestination(
                     icon=ft.icons.ADD_CIRCLE_OUTLINE, 
                     selected_icon=ft.icons.ADD_CIRCLE, 
-                    label="Add"
+                    label="Add",
+                    padding=ft.padding.symmetric(vertical=10)
                 ),
                 ft.NavigationRailDestination(
                     icon=ft.icons.WATERFALL_CHART, 
                     selected_icon=ft.icons.WATERFALL_CHART, 
-                    label="Money Flow"
+                    label="Money Flow",
+                    padding=ft.padding.symmetric(vertical=10)
                 ),
                 ft.NavigationRailDestination(
                     icon=ft.icons.CALENDAR_MONTH_OUTLINED, 
                     selected_icon=ft.icons.CALENDAR_MONTH, 
-                    label="Calendar"
+                    label="Calendar",
+                    padding=ft.padding.symmetric(vertical=10)
                 ),
                 ft.NavigationRailDestination(
                     icon=ft.icons.ACCOUNT_BALANCE_OUTLINED, 
                     selected_icon=ft.icons.ACCOUNT_BALANCE, 
-                    label="Assets"
+                    label="Assets",
+                    padding=ft.padding.symmetric(vertical=10)
                 ),
                 ft.NavigationRailDestination(
                     icon=ft.icons.ANALYTICS_OUTLINED, 
                     selected_icon=ft.icons.ANALYTICS, 
-                    label="Reports"
+                    label="Reports",
+                    padding=ft.padding.symmetric(vertical=10)
                 ),
                 ft.NavigationRailDestination(
                     icon=ft.icons.SETTINGS_OUTLINED, 
                     selected_icon=ft.icons.SETTINGS, 
-                    label="Settings"
+                    label="Settings",
+                    padding=ft.padding.symmetric(vertical=10)
                 ),
             ],
             on_change=change_route,
-            bgcolor=ft.colors.BLUE_GREY_900,
+            bgcolor=AppTheme.colors["background"],
+            indicator_color=AppTheme.colors["surface_variant"], # Subtle indicator
         )
 
-        # Layout
+        # Main Layout
         layout = ft.Row(
             [
                 rail,
-                ft.VerticalDivider(width=1, color=ft.colors.WHITE24),
-                body_container,
+                # Content Area with rounded corners
+                ft.Container(
+                    content=body_container,
+                    expand=True,
+                    bgcolor=AppTheme.colors["surface_variant"],
+                    border_radius=ft.border_radius.only(top_left=15),
+                    padding=20,
+                )
             ],
             expand=True,
+            spacing=0,
         )
 
         page.clean()

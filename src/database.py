@@ -53,8 +53,6 @@ class Database:
             )
         """)
 
-
-
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS fixed_costs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,13 +97,27 @@ class Database:
                 name TEXT NOT NULL,
                 type TEXT NOT NULL,
                 balance INTEGER DEFAULT 0,
-                asset_type TEXT DEFAULT 'Bank' -- 'Bank', 'Cash', 'Investment', 'Stock', 'Other'
+                asset_type TEXT DEFAULT 'Bank', -- 'Bank', 'Cash', 'Investment', 'Stock', 'Other'
+                linked_account_id INTEGER,
+                linked_card_id INTEGER,
+                FOREIGN KEY(linked_account_id) REFERENCES accounts(id),
+                FOREIGN KEY(linked_card_id) REFERENCES credit_cards(id)
             )
         """)
 
         # Add asset_type column if it doesn't exist
         try:
             cursor.execute("ALTER TABLE accounts ADD COLUMN asset_type TEXT DEFAULT 'Bank'")
+        except Exception:
+            pass
+
+        # Add linked columns if they don't exist
+        try:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN linked_account_id INTEGER")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN linked_card_id INTEGER")
         except Exception:
             pass
 
@@ -116,9 +128,16 @@ class Database:
                 name TEXT NOT NULL,
                 linked_account_id INTEGER,
                 withdrawal_day INTEGER,
+                balance INTEGER DEFAULT 0,
                 FOREIGN KEY(linked_account_id) REFERENCES accounts(id)
             )
         """)
+
+        # Add balance column to credit_cards if it doesn't exist
+        try:
+            cursor.execute("ALTER TABLE credit_cards ADD COLUMN balance INTEGER DEFAULT 0")
+        except Exception:
+            pass
 
         # Update transactions table to include account_id and credit_card_id if they don't exist
         try:
@@ -149,6 +168,11 @@ class Database:
                 ("Other", "Expense"),
             ]
             cursor.executemany("INSERT INTO categories (name, type) VALUES (?, ?)", default_categories)
+
+        # Create Indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)")
 
         # Initialize default settings
         cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", ("csv_encoding", "Shift-JIS"))
@@ -182,6 +206,18 @@ class Database:
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM fixed_costs WHERE id = ?", (fixed_cost_id,))
+        conn.commit()
+        conn.close()
+
+    def update_fixed_cost(self, fixed_cost_id: int, name: str, amount: int, category: str, type: str, day_of_month: int, payment_method: str = "Cash", payment_account_id: int = None, payment_card_id: int = None):
+        """Update an existing fixed cost."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE fixed_costs 
+            SET name = ?, amount = ?, category = ?, type = ?, day_of_month = ?, payment_method = ?, payment_account_id = ?, payment_card_id = ?
+            WHERE id = ?
+        """, (name, amount, category, type, day_of_month, payment_method, payment_account_id, payment_card_id, fixed_cost_id))
         conn.commit()
         conn.close()
 
@@ -287,10 +323,13 @@ class Database:
         conn.close()
 
     # --- Account Methods ---
-    def add_account(self, name: str, type: str, initial_balance: int = 0, asset_type: str = "Bank"):
+    def add_account(self, name: str, type: str, initial_balance: int = 0, asset_type: str = "Bank", linked_account_id: int = None, linked_card_id: int = None):
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO accounts (name, type, balance, asset_type) VALUES (?, ?, ?, ?)", (name, type, initial_balance, asset_type))
+        cursor.execute("""
+            INSERT INTO accounts (name, type, balance, asset_type, linked_account_id, linked_card_id) 
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (name, type, initial_balance, asset_type, linked_account_id, linked_card_id))
         conn.commit()
         conn.close()
 
@@ -317,12 +356,23 @@ class Database:
         conn.commit()
         conn.close()
 
-    # --- Credit Card Methods ---
-    def add_credit_card(self, name: str, linked_account_id: int, withdrawal_day: int):
+    def update_account(self, account_id: int, name: str, type: str, balance: int, asset_type: str, linked_account_id: int = None, linked_card_id: int = None):
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO credit_cards (name, linked_account_id, withdrawal_day) VALUES (?, ?, ?)", 
-                       (name, linked_account_id, withdrawal_day))
+        cursor.execute("""
+            UPDATE accounts 
+            SET name = ?, type = ?, balance = ?, asset_type = ?, linked_account_id = ?, linked_card_id = ?
+            WHERE id = ?
+        """, (name, type, balance, asset_type, linked_account_id, linked_card_id, account_id))
+        conn.commit()
+        conn.close()
+
+    # --- Credit Card Methods ---
+    def add_credit_card(self, name: str, linked_account_id: int, withdrawal_day: int, initial_balance: int = 0):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO credit_cards (name, linked_account_id, withdrawal_day, balance) VALUES (?, ?, ?, ?)", 
+                       (name, linked_account_id, withdrawal_day, initial_balance))
         conn.commit()
         conn.close()
 
@@ -345,6 +395,38 @@ class Database:
         cursor.execute("DELETE FROM credit_cards WHERE id = ?", (card_id,))
         conn.commit()
         conn.close()
+
+    def update_credit_card(self, card_id: int, name: str, linked_account_id: int, withdrawal_day: int):
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE credit_cards 
+            SET name = ?, linked_account_id = ?, withdrawal_day = ?
+            WHERE id = ?
+        """, (name, linked_account_id, withdrawal_day, card_id))
+        conn.commit()
+        conn.close()
+
+    def update_credit_card_balance(self, card_id: int, amount: int):
+        """Update credit card balance (Liability). Positive amount increases liability."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE credit_cards SET balance = balance + ? WHERE id = ?", (amount, card_id))
+        conn.commit()
+        conn.close()
+
+    def get_total_liabilities(self) -> int:
+        """Get sum of all credit card balances (Liabilities)."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT SUM(balance) FROM credit_cards")
+        result = cursor.fetchone()[0]
+        conn.close()
+        return result if result is not None else 0
+
+    def get_net_assets(self) -> int:
+        """Get Net Assets (Total Assets - Total Liabilities)."""
+        return self.get_total_assets() - self.get_total_liabilities()
 
     def get_setting(self, key: str, default: str = None) -> str:
         """Get a setting value."""
@@ -373,6 +455,11 @@ class Database:
         """, (date, type, category, amount, note, account_id, credit_card_id))
         conn.commit()
         conn.close()
+
+        # Handle Side Effects
+        if type == "Expense" and credit_card_id:
+            # Expense via Credit Card increases Liability
+            self.update_credit_card_balance(credit_card_id, amount)
 
     def update_transaction(self, transaction_id: int, date: str, type: str, category: str, amount: int, note: str = "", account_id: int = None, credit_card_id: int = None):
         """Update an existing transaction."""
@@ -536,6 +623,96 @@ class Database:
         rows = cursor.fetchall()
         conn.close()
         return {row[0]: row[1] for row in rows}
+
+    def get_liquid_assets(self) -> int:
+        """Get sum of Bank and Cash account balances."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT SUM(balance) FROM accounts WHERE asset_type IN ('Bank', 'Cash')")
+        result = cursor.fetchone()[0]
+        conn.close()
+        return result if result is not None else 0
+
+    def get_next_payment(self):
+        """
+        Calculates the next significant payment (Credit Card withdrawal or Fixed Cost).
+        Returns a dict with 'date', 'amount', 'name'.
+        """
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        
+        today = datetime.now()
+        next_payment = None
+        min_days_diff = float('inf')
+
+        # 1. Check Credit Card Withdrawals
+        cursor.execute("SELECT * FROM credit_cards")
+        cards = cursor.fetchall()
+        
+        for card in cards:
+            withdrawal_day = card['withdrawal_day']
+            if not withdrawal_day:
+                continue
+                
+            # Calculate next withdrawal date
+            try:
+                target_date = today.replace(day=withdrawal_day)
+                if target_date < today:
+                    # Move to next month
+                    if today.month == 12:
+                        target_date = target_date.replace(year=today.year + 1, month=1)
+                    else:
+                        target_date = target_date.replace(month=today.month + 1)
+            except ValueError:
+                # Handle invalid dates (e.g. Feb 30) by skipping or adjusting
+                continue
+            
+            # Estimate amount (simplified: current balance)
+            amount = card['balance']
+            if amount <= 0:
+                continue
+
+            days_diff = (target_date - today).days
+            if 0 <= days_diff < min_days_diff:
+                min_days_diff = days_diff
+                next_payment = {
+                    'date': target_date.strftime("%Y-%m-%d"),
+                    'amount': amount,
+                    'name': f"{card['name']} Withdrawal"
+                }
+
+        # 2. Check Fixed Costs
+        cursor.execute("SELECT * FROM fixed_costs")
+        fixed_costs = cursor.fetchall()
+        
+        for fc in fixed_costs:
+            day = fc['day_of_month']
+            try:
+                target_date = today.replace(day=day)
+                if target_date < today:
+                     if today.month == 12:
+                        target_date = target_date.replace(year=today.year + 1, month=1)
+                     else:
+                        target_date = target_date.replace(month=today.month + 1)
+            except ValueError:
+                continue
+                
+            days_diff = (target_date - today).days
+            
+            if 0 <= days_diff < min_days_diff:
+                min_days_diff = days_diff
+                next_payment = {
+                    'date': target_date.strftime("%Y-%m-%d"),
+                    'amount': fc['amount'],
+                    'name': fc['name']
+                }
+            elif days_diff == min_days_diff and next_payment:
+                 next_payment['amount'] += fc['amount']
+                 next_payment['name'] += f", {fc['name']}"
+
+        conn.close()
+        return next_payment
 
     def get_asset_trend(self, days: int = 30) -> List[Dict]:
         """Calculate asset trend for the last N days."""

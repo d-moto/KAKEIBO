@@ -1,5 +1,6 @@
 import flet as ft
 from database import Database
+from config.theme import AppTheme
 
 class FixedCostsDialog(ft.AlertDialog):
     def __init__(self, page: ft.Page, on_dismiss=None):
@@ -16,19 +17,28 @@ class FixedCostsDialog(ft.AlertDialog):
         
         super().__init__(
             modal=True,
-            title=ft.Text("Manage Fixed Costs"),
+            title=ft.Text("Manage Fixed Costs", style=AppTheme.text_styles["h2"]),
             content=ft.Container(
                 content=ft.Column([
-                    ft.Text("Automatically add these transactions every month.", size=12, color=ft.colors.WHITE54),
+                    ft.Text("Automatically add these transactions every month.", style=AppTheme.text_styles["body"]),
                     ft.Container(
                         content=self.fixed_costs_list,
-                        bgcolor=ft.colors.WHITE10,
+                        bgcolor=AppTheme.colors["surface"],
                         border_radius=10,
                         padding=10,
                         expand=True
                     ),
                     ft.Row([
-                        ft.ElevatedButton("Add New Fixed Cost", icon=ft.icons.ADD, on_click=self.show_add_form)
+                        ft.ElevatedButton(
+                            "Add New Fixed Cost", 
+                            icon=ft.icons.ADD, 
+                            on_click=self.show_add_form,
+                            style=ft.ButtonStyle(
+                                color=AppTheme.colors["text_primary"],
+                                bgcolor=AppTheme.colors["primary"],
+                                shape=ft.RoundedRectangleBorder(radius=10),
+                            )
+                        )
                     ], alignment=ft.MainAxisAlignment.END)
                 ], height=400, width=500),
                 padding=10
@@ -37,6 +47,7 @@ class FixedCostsDialog(ft.AlertDialog):
                 ft.TextButton("Close", on_click=self.close_dialog),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=AppTheme.colors["surface_variant"],
         )
         self.load_fixed_costs()
 
@@ -52,22 +63,28 @@ class FixedCostsDialog(ft.AlertDialog):
                     ft.Container(
                         content=ft.Row([
                             ft.Column([
-                                ft.Text(fc['name'], weight=ft.FontWeight.BOLD),
-                                ft.Text(f"{fc['category']} - Day {fc['day_of_month']}", size=12, color=ft.colors.WHITE54),
-                                ft.Text(f"Via: {fc['payment_method'] if fc['payment_method'] else 'Cash'}", size=10, color=ft.colors.BLUE_200),
+                                ft.Text(fc['name'], weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_primary"]),
+                                ft.Text(f"{fc['category']} - Day {fc['day_of_month']}", size=12, color=AppTheme.colors["text_secondary"]),
+                                ft.Text(f"Via: {fc['payment_method'] if fc['payment_method'] else 'Cash'}", size=10, color=AppTheme.colors["accent"]),
                             ]),
                             ft.Row([
-                                ft.Text(f"¥{fc['amount']:,}", weight=ft.FontWeight.BOLD),
+                                ft.Text(f"¥{fc['amount']:,}", weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_primary"]),
                                 ft.IconButton(
                                     icon=ft.icons.DELETE, 
                                     icon_color=ft.colors.RED_400, 
                                     icon_size=20,
                                     on_click=lambda e, fc_id=fc['id']: self.delete_fixed_cost(fc_id)
+                                ),
+                                ft.IconButton(
+                                    icon=ft.icons.EDIT, 
+                                    icon_color=ft.colors.BLUE_400, 
+                                    icon_size=20,
+                                    on_click=lambda e, f=fc: self.show_add_form(e, fixed_cost=f)
                                 )
                             ])
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         padding=10,
-                        bgcolor=ft.colors.GREY_900,
+                        bgcolor=AppTheme.colors["background"],
                         border_radius=5,
                     )
                 )
@@ -91,14 +108,14 @@ class FixedCostsDialog(ft.AlertDialog):
         snack.open = True
         self.page_ref.update()
 
-    def show_add_form(self, e):
-        # Nested dialog for adding
+    def show_add_form(self, e, fixed_cost=None):
+        # Nested dialog for adding/editing
         def close_add_dlg(e):
             self.page_ref.dialog = self # Restore parent dialog
             self.open = True
             self.page_ref.update()
 
-        def add_fixed_cost(e):
+        def save_fixed_cost(e):
             try:
                 if not name_input.value:
                     self.show_snack("Please enter a name")
@@ -113,8 +130,6 @@ class FixedCostsDialog(ft.AlertDialog):
                 name = name_input.value
                 amount = int(amount_input.value)
                 category = category_dropdown.value
-                day = int(day_input.value)
-                
                 day = int(day_input.value)
                 
                 if day < 1 or day > 31:
@@ -136,15 +151,17 @@ class FixedCostsDialog(ft.AlertDialog):
                     else:
                         payment_method = "Cash"
 
-                self.db.add_fixed_cost(name, amount, category, "Expense", day, payment_method, payment_account_id, payment_card_id)
-                
-                # Check and add immediately if applicable
-                added_count = self.db.process_fixed_costs()
-                
-                msg = "Fixed cost added"
-                if added_count > 0:
-                    msg += f" and {added_count} transaction(s) generated."
-                self.show_snack(msg)
+                if fixed_cost:
+                    self.db.update_fixed_cost(fixed_cost['id'], name, amount, category, "Expense", day, payment_method, payment_account_id, payment_card_id)
+                    self.show_snack("Fixed cost updated")
+                else:
+                    self.db.add_fixed_cost(name, amount, category, "Expense", day, payment_method, payment_account_id, payment_card_id)
+                    # Check and add immediately if applicable (only for new ones to avoid double entry logic complexity for now)
+                    added_count = self.db.process_fixed_costs()
+                    msg = "Fixed cost added"
+                    if added_count > 0:
+                        msg += f" and {added_count} transaction(s) generated."
+                    self.show_snack(msg)
                 
                 self.load_fixed_costs()
                 close_add_dlg(e)
@@ -152,15 +169,16 @@ class FixedCostsDialog(ft.AlertDialog):
             except ValueError:
                 self.show_snack("Invalid input. Please enter numbers for Amount and Day.")
 
-        name_input = ft.TextField(label="Name", autofocus=True)
-        amount_input = ft.TextField(label="Amount", keyboard_type=ft.KeyboardType.NUMBER)
-        day_input = ft.TextField(label="Day of Month (1-31)", keyboard_type=ft.KeyboardType.NUMBER)
+        name_input = ft.TextField(label="Name", autofocus=True, value=fixed_cost['name'] if fixed_cost else "", border_color=AppTheme.colors["text_secondary"])
+        amount_input = ft.TextField(label="Amount", keyboard_type=ft.KeyboardType.NUMBER, value=str(fixed_cost['amount']) if fixed_cost else "", border_color=AppTheme.colors["text_secondary"])
+        day_input = ft.TextField(label="Day of Month (1-31)", keyboard_type=ft.KeyboardType.NUMBER, value=str(fixed_cost['day_of_month']) if fixed_cost else "", border_color=AppTheme.colors["text_secondary"])
         
         categories = self.db.get_categories("Expense")
         category_dropdown = ft.Dropdown(
             label="Category",
             options=[ft.dropdown.Option(c['name']) for c in categories],
-            value=categories[0]['name'] if categories else None
+            value=fixed_cost['category'] if fixed_cost else (categories[0]['name'] if categories else None),
+            border_color=AppTheme.colors["text_secondary"]
         )
 
         # Payment Method Dropdown
@@ -176,15 +194,24 @@ class FixedCostsDialog(ft.AlertDialog):
         for card in cards:
             payment_options.append(ft.dropdown.Option(key=f"card_{card['id']}", text=f"{card['name']} (Card)"))
             
+        initial_payment_value = "Cash"
+        if fixed_cost:
+            if fixed_cost['payment_account_id']:
+                initial_payment_value = f"acc_{fixed_cost['payment_account_id']}"
+            elif fixed_cost['payment_card_id']:
+                initial_payment_value = f"card_{fixed_cost['payment_card_id']}"
+
         payment_method_dropdown = ft.Dropdown(
             label="Payment Method",
             options=payment_options,
-            value="Cash"
+            value=initial_payment_value,
+            border_color=AppTheme.colors["text_secondary"]
         )
 
+        title = "Edit Fixed Cost" if fixed_cost else "Add Fixed Cost"
         add_dlg = ft.AlertDialog(
             modal=True,
-            title=ft.Text("Add Fixed Cost"),
+            title=ft.Text(title, style=AppTheme.text_styles["h2"]),
             content=ft.Column([
                 name_input,
                 amount_input,
@@ -194,14 +221,12 @@ class FixedCostsDialog(ft.AlertDialog):
             ], height=350),
             actions=[
                 ft.TextButton("Cancel", on_click=close_add_dlg),
-                ft.TextButton("Add", on_click=add_fixed_cost),
+                ft.TextButton("Save", on_click=save_fixed_cost),
             ],
             actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor=AppTheme.colors["surface_variant"],
         )
         
-        # We need to close self temporarily to show add_dlg if we want to avoid stacking issues, 
-        # or just replace page.dialog. 
-        # Flet supports only one dialog at a time in page.dialog usually, but we can switch them.
         self.open = False # Hide parent
         self.page_ref.dialog = add_dlg
         add_dlg.open = True

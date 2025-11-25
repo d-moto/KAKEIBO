@@ -1,6 +1,9 @@
 import flet as ft
 from database import Database
 import datetime
+from config.theme import AppTheme
+
+import re
 
 class ReportsView(ft.UserControl):
     def __init__(self, page: ft.Page):
@@ -19,29 +22,29 @@ class ReportsView(ft.UserControl):
         return ft.Container(
             content=ft.Column(
                 [
-                    ft.Text("Advanced Analysis", size=24, weight=ft.FontWeight.BOLD),
-                    ft.Divider(),
+                    ft.Text("Advanced Analysis", style=AppTheme.text_styles["h1"]),
+                    ft.Divider(color=AppTheme.colors["divider"]),
                     
                     # Monthly Comparison Section
-                    ft.Text("Monthly Comparison (Last 6 Months)", size=18, weight=ft.FontWeight.BOLD),
+                    ft.Text("Monthly Comparison (Last 6 Months)", style=AppTheme.text_styles["h2"]),
                     ft.Container(
                         content=self.comparison_chart_container,
-                        bgcolor=ft.colors.WHITE10,
+                        bgcolor=AppTheme.colors["surface"],
                         border_radius=10,
                         padding=20,
                     ),
                     
-                    ft.Divider(),
+                    ft.Divider(color=AppTheme.colors["divider"]),
                     
                     # Category Trend Section
                     ft.Row([
-                        ft.Text("Category Spending Trend", size=18, weight=ft.FontWeight.BOLD),
+                        ft.Text("Category Spending Trend", style=AppTheme.text_styles["h2"]),
                         self.category_dropdown
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     
                     ft.Container(
                         content=self.trend_chart_container,
-                        bgcolor=ft.colors.WHITE10,
+                        bgcolor=AppTheme.colors["surface"],
                         border_radius=10,
                         padding=20,
                     ),
@@ -51,11 +54,6 @@ class ReportsView(ft.UserControl):
             ),
             padding=20,
             expand=True,
-            gradient=ft.LinearGradient(
-                begin=ft.alignment.top_left,
-                end=ft.alignment.bottom_right,
-                colors=[ft.colors.BLUE_GREY_900, ft.colors.BLACK],
-            )
         )
 
     def did_mount(self):
@@ -89,10 +87,9 @@ class ReportsView(ft.UserControl):
         for i, item in enumerate(data):
             income = item['income']
             expense = item['expense']
+
             max_y = max(max_y, income, expense)
-            
-            max_y = max(max_y, income, expense)
-            
+
             bar_groups.append(
                 ft.BarChartGroup(
                     x=i,
@@ -101,14 +98,14 @@ class ReportsView(ft.UserControl):
                             to_y=income,
                             color=ft.colors.GREEN_400,
                             width=20,
-                            tooltip=f"{item['month']}, Income: ¥{income:,}",
+                            tooltip=f"{item['month']} Income: {income:,} JPY",
                             border_radius=ft.border_radius.vertical(top=5)
                         ),
                         ft.BarChartRod(
                             to_y=expense,
                             color=ft.colors.RED_400,
                             width=20,
-                            tooltip=f"{item['month']}, Expense: ¥{expense:,}",
+                            tooltip=f"{item['month']} Expense: {expense:,} JPY",
                             border_radius=ft.border_radius.vertical(top=5)
                         ),
                     ]
@@ -117,22 +114,22 @@ class ReportsView(ft.UserControl):
 
         chart = ft.BarChart(
             bar_groups=bar_groups,
-            border=ft.border.all(1, ft.colors.WHITE10),
+            border=ft.border.all(1, AppTheme.colors["divider"]),
             left_axis=ft.ChartAxis(
                 labels_size=40,
-                title=ft.Text("Amount", size=10),
+                title=ft.Text("Amount", size=10, color=AppTheme.colors["text_secondary"]),
                 title_size=20,
             ),
             bottom_axis=ft.ChartAxis(
                 labels=[
                     ft.ChartAxisLabel(
                         value=i,
-                        label=ft.Text(d['month'][5:], size=10, weight=ft.FontWeight.BOLD)
+                        label=ft.Text(d['month'][5:], size=10, weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_secondary"])
                     ) for i, d in enumerate(data)
                 ],
                 labels_size=20,
             ),
-            tooltip_bgcolor=ft.colors.with_opacity(0.8, ft.colors.BLUE_GREY_900),
+            tooltip_bgcolor=AppTheme.colors["surface_variant"],
             max_y=max_y * 1.1,
             expand=True,
         )
@@ -159,7 +156,7 @@ class ReportsView(ft.UserControl):
                 ft.LineChartDataPoint(
                     i, 
                     amount,
-                    tooltip=f"{item['month']}\n¥{amount:,}",
+                    tooltip=f"{item['month']}\n{amount:,} JPY",
                 )
             )
             
@@ -168,28 +165,28 @@ class ReportsView(ft.UserControl):
                 ft.LineChartData(
                     data_points=data_points,
                     stroke_width=3,
-                    color=ft.colors.CYAN,
-                    curved=True,
+                    color=AppTheme.colors["accent"],
+                    curved=False,
                     stroke_cap_round=True,
-                    below_line_bgcolor=ft.colors.with_opacity(0.2, ft.colors.CYAN),
+                    below_line_bgcolor=ft.colors.with_opacity(0.2, AppTheme.colors["accent"]),
                 )
             ],
-            border=ft.border.all(1, ft.colors.WHITE10),
+            border=ft.border.all(1, AppTheme.colors["divider"]),
             left_axis=ft.ChartAxis(
                 labels_size=40,
-                title=ft.Text("Amount", size=10),
+                title=ft.Text("Amount", size=10, color=AppTheme.colors["text_secondary"]),
                 title_size=20,
             ),
             bottom_axis=ft.ChartAxis(
                 labels=[
                     ft.ChartAxisLabel(
                         value=i,
-                        label=ft.Text(d['month'][5:], size=10, weight=ft.FontWeight.BOLD)
+                        label=ft.Text(d['month'][5:], size=10, weight=ft.FontWeight.BOLD, color=AppTheme.colors["text_secondary"])
                     ) for i, d in enumerate(data)
                 ],
                 labels_size=20,
             ),
-            tooltip_bgcolor=ft.colors.with_opacity(0.8, ft.colors.BLUE_GREY_900),
+            tooltip_bgcolor=AppTheme.colors["surface_variant"],
             max_y=max_y * 1.1 if max_y > 0 else 1000,
             expand=True,
         )
