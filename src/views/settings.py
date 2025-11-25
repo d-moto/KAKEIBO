@@ -7,10 +7,10 @@ from config.theme import AppTheme
 from config.locales import get_text
 
 class SettingsView(ft.UserControl):
-    def __init__(self, page: ft.Page):
+    def __init__(self, page: ft.Page, db: Database):
         super().__init__()
         self.page = page
-        self.db = Database()
+        self.db = db
 
     def build(self):
         current_encoding = self.db.get_setting("csv_encoding", "Shift-JIS")
@@ -311,7 +311,7 @@ class SettingsView(ft.UserControl):
         self.page.update()
 
     def show_fixed_costs_dialog(self, e):
-        dlg = FixedCostsDialog(self.page)
+        dlg = FixedCostsDialog(self.page, self.db)
         self.page.dialog = dlg
         dlg.open = True
         self.page.update()

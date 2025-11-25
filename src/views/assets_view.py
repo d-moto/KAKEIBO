@@ -4,10 +4,10 @@ from config.theme import AppTheme
 
 
 class AssetsView(ft.UserControl):
-    def __init__(self, page: ft.Page):
+    def __init__(self, page: ft.Page, db: Database):
         super().__init__()
         self.page = page
-        self.db = Database()
+        self.db = db
         self.accounts_list = ft.Column(spacing=10)
         self.credit_cards_list = ft.Column(spacing=10)
         self.chart_container = ft.Container(padding=20)

@@ -5,10 +5,10 @@ from config.theme import AppTheme
 
 
 class MoneyFlowView(ft.UserControl):
-    def __init__(self, page: ft.Page):
+    def __init__(self, page: ft.Page, db: Database):
         super().__init__()
         self.page = page
-        self.db = Database()
+        self.db = db
         self.current_month = datetime.now().strftime("%Y-%m")
         self.chart_container = ft.Container(expand=True)
         self.month_text = ft.Text(

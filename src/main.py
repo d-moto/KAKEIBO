@@ -4,14 +4,13 @@ import os
 import sys
 import logging
 
+from utils.logger import setup_logger
+
 # Configure logging
-app_data_dir = os.path.join(os.environ['LOCALAPPDATA'], 'Kakeibo')
-os.makedirs(app_data_dir, exist_ok=True)
-log_file = os.path.join(app_data_dir, 'kakeibo.log')
-logging.basicConfig(filename=log_file, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = setup_logger()
 
 def main(page: ft.Page):
-    logging.info("App started.")
+    logger.info("App started.")
     page.title = "KAKEIBO - Premium"
     
     # Load theme
@@ -19,6 +18,7 @@ def main(page: ft.Page):
     from config.theme import AppTheme
     from database import Database
     db = Database()
+    db.init_db() # Explicit initialization
     
     # Force Dark Mode for now as per design requirement
     page.theme_mode = ft.ThemeMode.DARK
@@ -63,18 +63,18 @@ def main(page: ft.Page):
         def on_edit_transaction(transaction):
             # Switch to input form with transaction data
             nonlocal input_form
-            input_form = InputFormView(page, on_save=on_save_transaction, transaction=transaction)
+            input_form = InputFormView(page, db, on_save=on_save_transaction, transaction=transaction)
             rail.selected_index = 1
             change_route(None)
             page.update()
 
-        dashboard = DashboardView(page, on_edit_click=on_edit_transaction)
-        input_form = InputFormView(page, on_save=on_save_transaction)
-        settings_view = SettingsView(page)
-        money_flow_view = MoneyFlowView(page)
-        calendar_view = CalendarView(page)
-        assets_view = AssetsView(page)
-        reports_view = ReportsView(page)
+        dashboard = DashboardView(page, db, on_edit_click=on_edit_transaction)
+        input_form = InputFormView(page, db, on_save=on_save_transaction)
+        settings_view = SettingsView(page, db)
+        money_flow_view = MoneyFlowView(page, db)
+        calendar_view = CalendarView(page, db)
+        assets_view = AssetsView(page, db)
+        reports_view = ReportsView(page, db)
 
         def check_fixed_costs(page):
             added_count = db.process_fixed_costs()
@@ -130,7 +130,7 @@ def main(page: ft.Page):
                     else:
                         initial_date = f"{dashboard.current_month}-01"
                         
-                    input_form = InputFormView(page, on_save=on_save_transaction, initial_date=initial_date)
+                    input_form = InputFormView(page, db, on_save=on_save_transaction, initial_date=initial_date)
                 body_container.content = input_form
             elif index == 2:
                 # Money Flow
@@ -221,17 +221,19 @@ def main(page: ft.Page):
         page.clean()
         page.add(layout)
         page.update()
-        logging.info("Main UI rendered.")
+        page.add(layout)
+        page.update()
+        logger.info("Main UI rendered.")
 
     except Exception as e:
-        logging.error(f"CRITICAL ERROR: {e}")
-        logging.error(traceback.format_exc())
+        logger.error(f"CRITICAL ERROR: {e}")
+        logger.error(traceback.format_exc())
         page.clean()
         page.add(
             ft.Column([
                 ft.Text("An error occurred:", color="red", size=20),
                 ft.Text(str(e), color="red"),
-                ft.Text("See kakeibo.log for details.", color="white")
+                ft.Text("See app.log for details.", color="white")
             ])
         )
         page.update()
@@ -240,5 +242,5 @@ if __name__ == "__main__":
     try:
         ft.app(target=main)
     except Exception as e:
-        logging.error(f"Startup Error: {e}")
-        logging.error(traceback.format_exc())
+        logger.error(f"Startup Error: {e}")
+        logger.error(traceback.format_exc())

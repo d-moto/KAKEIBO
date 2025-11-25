@@ -5,10 +5,10 @@ import calendar
 from config.theme import AppTheme
 
 class CalendarView(ft.UserControl):
-    def __init__(self, page: ft.Page):
+    def __init__(self, page: ft.Page, db: Database):
         super().__init__()
         self.page = page
-        self.db = Database()
+        self.db = db
         self.current_month = datetime.now().strftime("%Y-%m")
         self.calendar_grid = ft.Column(spacing=2)
 

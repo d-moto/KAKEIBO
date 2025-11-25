@@ -6,10 +6,10 @@ from config.theme import AppTheme
 import re
 
 class ReportsView(ft.UserControl):
-    def __init__(self, page: ft.Page):
+    def __init__(self, page: ft.Page, db: Database):
         super().__init__()
         self.page = page
-        self.db = Database()
+        self.db = db
         self.comparison_chart_container = ft.Container(height=300)
         self.trend_chart_container = ft.Container(height=300)
         self.category_dropdown = ft.Dropdown(

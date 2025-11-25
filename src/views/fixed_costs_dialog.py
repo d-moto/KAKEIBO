@@ -3,9 +3,9 @@ from database import Database
 from config.theme import AppTheme
 
 class FixedCostsDialog(ft.AlertDialog):
-    def __init__(self, page: ft.Page, on_dismiss=None):
+    def __init__(self, page: ft.Page, db: Database, on_dismiss=None):
         self.page_ref = page
-        self.db = Database()
+        self.db = db
         self.on_dismiss_callback = on_dismiss
         
         self.fixed_costs_list = ft.ListView(
@@ -18,38 +18,45 @@ class FixedCostsDialog(ft.AlertDialog):
         super().__init__(
             modal=True,
             title=ft.Text("Manage Fixed Costs", style=AppTheme.text_styles["h2"]),
-            content=ft.Container(
-                content=ft.Column([
-                    ft.Text("Automatically add these transactions every month.", style=AppTheme.text_styles["body"]),
-                    ft.Container(
-                        content=self.fixed_costs_list,
-                        bgcolor=AppTheme.colors["surface"],
-                        border_radius=10,
-                        padding=10,
-                        expand=True
-                    ),
-                    ft.Row([
-                        ft.ElevatedButton(
-                            "Add New Fixed Cost", 
-                            icon=ft.icons.ADD, 
-                            on_click=self.show_add_form,
-                            style=ft.ButtonStyle(
-                                color=AppTheme.colors["text_primary"],
-                                bgcolor=AppTheme.colors["primary"],
-                                shape=ft.RoundedRectangleBorder(radius=10),
-                            )
-                        )
-                    ], alignment=ft.MainAxisAlignment.END)
-                ], height=400, width=500),
-                padding=10
-            ),
-            actions=[
-                ft.TextButton("Close", on_click=self.close_dialog),
-            ],
+            content=ft.Container(), # Placeholder, set in show_main_view
+            actions=[], # Placeholder
             actions_alignment=ft.MainAxisAlignment.END,
             bgcolor=AppTheme.colors["surface_variant"],
         )
+        self.show_main_view()
+
+    def show_main_view(self):
+        self.title = ft.Text("Manage Fixed Costs", style=AppTheme.text_styles["h2"])
+        self.content = ft.Container(
+            content=ft.Column([
+                ft.Text("Automatically add these transactions every month.", style=AppTheme.text_styles["body"]),
+                ft.Container(
+                    content=self.fixed_costs_list,
+                    bgcolor=AppTheme.colors["surface"],
+                    border_radius=10,
+                    padding=10,
+                    expand=True
+                ),
+                ft.Row([
+                    ft.ElevatedButton(
+                        "Add New Fixed Cost", 
+                        icon=ft.icons.ADD, 
+                        on_click=lambda e: self.show_add_view(),
+                        style=ft.ButtonStyle(
+                            color=AppTheme.colors["text_primary"],
+                            bgcolor=AppTheme.colors["primary"],
+                            shape=ft.RoundedRectangleBorder(radius=10),
+                        )
+                    )
+                ], alignment=ft.MainAxisAlignment.END)
+            ], height=400, width=500),
+            padding=10
+        )
+        self.actions = [
+            ft.TextButton("Close", on_click=self.close_dialog),
+        ]
         self.load_fixed_costs()
+        self.page_ref.update()
 
     def load_fixed_costs(self):
         self.fixed_costs_list.controls.clear()
@@ -79,7 +86,7 @@ class FixedCostsDialog(ft.AlertDialog):
                                     icon=ft.icons.EDIT, 
                                     icon_color=ft.colors.BLUE_400, 
                                     icon_size=20,
-                                    on_click=lambda e, f=fc: self.show_add_form(e, fixed_cost=f)
+                                    on_click=lambda e, f=fc: self.show_add_view(fixed_cost=f)
                                 )
                             ])
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
@@ -97,7 +104,6 @@ class FixedCostsDialog(ft.AlertDialog):
 
     def close_dialog(self, e):
         self.open = False
-        self.page_ref.dialog = None
         self.page_ref.update()
         if self.on_dismiss_callback:
             self.on_dismiss_callback()
@@ -108,13 +114,7 @@ class FixedCostsDialog(ft.AlertDialog):
         snack.open = True
         self.page_ref.update()
 
-    def show_add_form(self, e, fixed_cost=None):
-        # Nested dialog for adding/editing
-        def close_add_dlg(e):
-            self.page_ref.dialog = self # Restore parent dialog
-            self.open = True
-            self.page_ref.update()
-
+    def show_add_view(self, fixed_cost=None):
         def save_fixed_cost(e):
             try:
                 if not name_input.value:
@@ -163,8 +163,7 @@ class FixedCostsDialog(ft.AlertDialog):
                         msg += f" and {added_count} transaction(s) generated."
                     self.show_snack(msg)
                 
-                self.load_fixed_costs()
-                close_add_dlg(e)
+                self.show_main_view()
                 
             except ValueError:
                 self.show_snack("Invalid input. Please enter numbers for Amount and Day.")
@@ -209,25 +208,18 @@ class FixedCostsDialog(ft.AlertDialog):
         )
 
         title = "Edit Fixed Cost" if fixed_cost else "Add Fixed Cost"
-        add_dlg = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(title, style=AppTheme.text_styles["h2"]),
-            content=ft.Column([
-                name_input,
-                amount_input,
-                category_dropdown,
-                payment_method_dropdown,
-                day_input
-            ], height=350),
-            actions=[
-                ft.TextButton("Cancel", on_click=close_add_dlg),
-                ft.TextButton("Save", on_click=save_fixed_cost),
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-            bgcolor=AppTheme.colors["surface_variant"],
-        )
         
-        self.open = False # Hide parent
-        self.page_ref.dialog = add_dlg
-        add_dlg.open = True
+        self.title = ft.Text(title, style=AppTheme.text_styles["h2"])
+        self.content = ft.Column([
+            name_input,
+            amount_input,
+            category_dropdown,
+            payment_method_dropdown,
+            day_input
+        ], height=350, width=500)
+        
+        self.actions = [
+            ft.TextButton("Cancel", on_click=lambda e: self.show_main_view()),
+            ft.TextButton("Save", on_click=save_fixed_cost),
+        ]
         self.page_ref.update()

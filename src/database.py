@@ -2,6 +2,9 @@ import sqlite3
 import os
 from datetime import datetime
 from typing import List, Dict, Optional
+import logging
+
+logger = logging.getLogger("Kakeibo")
 
 # Use AppData for database to ensure write permissions
 app_data_dir = os.path.join(os.environ['LOCALAPPDATA'], 'Kakeibo')
@@ -11,10 +14,12 @@ DB_FILE = os.path.join(app_data_dir, "kakeibo.db")
 class Database:
     def __init__(self, db_file: str = DB_FILE):
         self.db_file = db_file
-        self.init_db()
+        # self.init_db() # Removed to prevent repeated initialization
 
     def get_connection(self):
-        return sqlite3.connect(self.db_file)
+        conn = sqlite3.connect(self.db_file)
+        conn.set_trace_callback(logger.debug)
+        return conn
 
     def init_db(self):
         """Initialize the database table."""
@@ -71,16 +76,16 @@ class Database:
         # Add new columns to fixed_costs if they don't exist
         try:
             cursor.execute("ALTER TABLE fixed_costs ADD COLUMN payment_method TEXT")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Migration error (payment_method): {e}")
         try:
             cursor.execute("ALTER TABLE fixed_costs ADD COLUMN payment_account_id INTEGER")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Migration error (payment_account_id): {e}")
         try:
             cursor.execute("ALTER TABLE fixed_costs ADD COLUMN payment_card_id INTEGER")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Migration error (payment_card_id): {e}")
 
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS category_budgets (
@@ -108,18 +113,18 @@ class Database:
         # Add asset_type column if it doesn't exist
         try:
             cursor.execute("ALTER TABLE accounts ADD COLUMN asset_type TEXT DEFAULT 'Bank'")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Migration error (asset_type): {e}")
 
         # Add linked columns if they don't exist
         try:
             cursor.execute("ALTER TABLE accounts ADD COLUMN linked_account_id INTEGER")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Migration error (linked_account_id): {e}")
         try:
             cursor.execute("ALTER TABLE accounts ADD COLUMN linked_card_id INTEGER")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Migration error (linked_card_id): {e}")
 
         # Credit Cards Table
         cursor.execute("""
@@ -136,19 +141,19 @@ class Database:
         # Add balance column to credit_cards if it doesn't exist
         try:
             cursor.execute("ALTER TABLE credit_cards ADD COLUMN balance INTEGER DEFAULT 0")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Migration error (credit_cards balance): {e}")
 
         # Update transactions table to include account_id and credit_card_id if they don't exist
         try:
             cursor.execute("ALTER TABLE transactions ADD COLUMN account_id INTEGER")
-        except Exception:
-            pass # Column likely exists
+        except Exception as e:
+            logger.warning(f"Migration error (account_id): {e}") # Column likely exists
             
         try:
             cursor.execute("ALTER TABLE transactions ADD COLUMN credit_card_id INTEGER")
-        except Exception:
-            pass # Column likely exists
+        except Exception as e:
+            logger.warning(f"Migration error (credit_card_id): {e}") # Column likely exists
         
         # Check if categories exist, if not add defaults
         cursor.execute("SELECT count(*) FROM categories")
@@ -233,34 +238,56 @@ class Database:
         """Check and auto-add fixed costs. Returns number of added transactions."""
         from datetime import datetime
         
-        fixed_costs = self.get_fixed_costs()
-        current_date = datetime.now()
-        current_month = current_date.strftime("%Y-%m")
-        today_day = current_date.day
+        conn = self.get_connection()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
         
-        added_count = 0
-        for fc in fixed_costs:
-            # If never added (None) or added in a previous month
-            if fc['last_added_month'] != current_month:
-                # If today is on or after the scheduled day
-                if today_day >= fc['day_of_month']:
-                    # Add transaction
-                    date_str = f"{current_month}-{fc['day_of_month']:02d}"
-                    
-                    # Determine account/card IDs
-                    account_id = fc['payment_account_id']
-                    credit_card_id = fc['payment_card_id']
-                    
-                    self.add_transaction(date_str, fc['type'], fc['category'], fc['amount'], f"Fixed Cost: {fc['name']}", account_id, credit_card_id)
-                    
-                    # Update account balance if bank account used
-                    if account_id:
-                        self.update_account_balance(account_id, -fc['amount'])
+        try:
+            cursor.execute("SELECT * FROM fixed_costs")
+            fixed_costs = [dict(row) for row in cursor.fetchall()]
+            
+            current_date = datetime.now()
+            current_month = current_date.strftime("%Y-%m")
+            today_day = current_date.day
+            
+            added_count = 0
+            for fc in fixed_costs:
+                # If never added (None) or added in a previous month
+                if fc['last_added_month'] != current_month:
+                    # If today is on or after the scheduled day
+                    if today_day >= fc['day_of_month']:
+                        # Add transaction
+                        date_str = f"{current_month}-{fc['day_of_month']:02d}"
+                        
+                        # Determine account/card IDs
+                        account_id = fc['payment_account_id']
+                        credit_card_id = fc['payment_card_id']
+                        
+                        cursor.execute("""
+                            INSERT INTO transactions (date, type, category, amount, note, account_id, credit_card_id)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (date_str, fc['type'], fc['category'], fc['amount'], f"Fixed Cost: {fc['name']}", account_id, credit_card_id))
+                        
+                        # Handle Side Effects (Logic duplicated from add_transaction for performance)
+                        if fc['type'] == "Expense" and credit_card_id:
+                             cursor.execute("UPDATE credit_cards SET balance = balance + ? WHERE id = ?", (fc['amount'], credit_card_id))
+                        
+                        # Update account balance if bank account used
+                        if account_id:
+                            cursor.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?", (fc['amount'], account_id)) # Note: Subtracting for expense
 
-                    # Update last added month
-                    self.update_fixed_cost_last_added(fc['id'], current_month)
-                    added_count += 1
-        return added_count
+                        # Update last added month
+                        cursor.execute("UPDATE fixed_costs SET last_added_month = ? WHERE id = ?", (current_month, fc['id']))
+                        added_count += 1
+            
+            conn.commit()
+            return added_count
+        except Exception as e:
+            logger.error(f"Error processing fixed costs: {e}")
+            conn.rollback()
+            return 0
+        finally:
+            conn.close()
 
     def get_monthly_summary(self, month: str) -> dict:
         """Get summary of income and expenses for a specific month for Money Flow."""

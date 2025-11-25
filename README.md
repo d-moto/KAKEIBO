@@ -86,6 +86,19 @@ To run the test suite:
 uv run tests/test_database.py
 ```
 
+## Build
+
+To build the application as a standalone executable:
+
+1.  Ensure you have the necessary build tools installed.
+2.  Run the build command:
+    ```bash
+    flet pack src/main.py --name Kakeibo --icon src/assets/icon.ico --add-data "src/assets;assets"
+    ```
+    *Note: You may need to adjust the path to `icon.ico` and assets depending on your environment.*
+
+3.  The executable will be generated in the `dist` directory.
+
 ## License
 
 This project is licensed under the MIT License.

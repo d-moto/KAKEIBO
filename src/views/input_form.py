@@ -3,15 +3,18 @@ from database import Database
 from datetime import datetime
 from config.theme import AppTheme
 from config.locales import get_text
+import logging
+
+logger = logging.getLogger("Kakeibo")
 
 class InputFormView(ft.UserControl):
-    def __init__(self, page: ft.Page, on_save=None, transaction=None, initial_date=None):
+    def __init__(self, page: ft.Page, db: Database, on_save=None, transaction=None, initial_date=None):
         super().__init__()
         self.page = page
         self.on_save = on_save
         self.transaction = transaction
         self.initial_date = initial_date
-        self.db = Database()
+        self.db = db
 
     def build(self):
         self.lang = self.db.get_setting("language", "en")
@@ -297,6 +300,7 @@ class InputFormView(ft.UserControl):
         self.date_button.update()
 
     def save_transaction(self, e):
+        logger.info("Attempting to save transaction")
         try:
             date = self.date_button.text
             type_ = self.type_dropdown.value
@@ -323,6 +327,7 @@ class InputFormView(ft.UserControl):
             if self.transaction:
                 # Update logic is complex with transfers, for now simplistic update
                 self.db.update_transaction(self.transaction['id'], date, type_, category, amount, note, account_id, credit_card_id)
+                logger.info(f"Updated transaction {self.transaction['id']}")
                 self.page.snack_bar = ft.SnackBar(ft.Text("Transaction updated!"))
             else:
                 # Handle Transfer Logic
@@ -373,6 +378,7 @@ class InputFormView(ft.UserControl):
                     # Note: Credit Card liability update is now handled inside add_transaction (side effect)
                 
                 self.page.snack_bar = ft.SnackBar(ft.Text("Transaction saved!"))
+                logger.info("Transaction saved successfully")
             
             self.page.snack_bar.open = True
             self.page.update()
@@ -391,6 +397,7 @@ class InputFormView(ft.UserControl):
             self.page.snack_bar.open = True
             self.page.update()
         except Exception as ex:
+            logger.error(f"Error saving transaction: {ex}")
             import traceback
             traceback.print_exc()
             self.page.snack_bar = ft.SnackBar(ft.Text(f"Error: {ex}"))

@@ -6,14 +6,17 @@ import csv
 from views.fixed_costs_dialog import FixedCostsDialog
 from config.theme import AppTheme
 from config.locales import get_text
+import logging
+
+logger = logging.getLogger("Kakeibo")
 
 
 class DashboardView(ft.UserControl):
-    def __init__(self, page: ft.Page, on_edit_click=None):
+    def __init__(self, page: ft.Page, db: Database, on_edit_click=None):
         super().__init__()
         self.page = page
         self.on_edit_click = on_edit_click
-        self.db = Database()
+        self.db = db
         self.current_month = datetime.now().strftime("%Y-%m")
         self.all_transactions = [] # Store all transactions for current month for filtering
 
@@ -210,11 +213,12 @@ class DashboardView(ft.UserControl):
         def save_budget(e):
             try:
                 amount = int(budget_input.value)
+                logger.info(f"Setting budget for {self.current_month}: {amount}")
                 self.db.set_budget(self.current_month, amount)
                 self.load_data()
                 close_dlg(e)
-            except ValueError:
-                pass
+            except ValueError as e:
+                logger.warning(f"Invalid budget input: {budget_input.value}")
 
         current_budget = self.db.get_budget(self.current_month)
         budget_input = ft.TextField(label="Monthly Budget", value=str(current_budget), keyboard_type=ft.KeyboardType.NUMBER, autofocus=True)
@@ -267,6 +271,7 @@ class DashboardView(ft.UserControl):
             month = 12
             year -= 1
         self.current_month = f"{year}-{month:02d}"
+        logger.info(f"Changed month to {self.current_month}")
         self.month_text.value = self.current_month
         self.load_data()
         self.update()
@@ -278,6 +283,7 @@ class DashboardView(ft.UserControl):
             month = 1
             year += 1
         self.current_month = f"{year}-{month:02d}"
+        logger.info(f"Changed month to {self.current_month}")
         self.month_text.value = self.current_month
         self.load_data()
         self.update()
@@ -378,6 +384,7 @@ class DashboardView(ft.UserControl):
         )
 
     def load_data(self):
+        logger.debug(f"Loading data for {self.current_month}")
         try:
             self.all_transactions = self.db.get_transactions(self.current_month)
             # balance = self.db.get_balance(self.current_month) # Not used in new header
@@ -468,7 +475,10 @@ class DashboardView(ft.UserControl):
             self.update_chart()
             
             self.update()
-        except Exception:
+            logger.debug("Data loaded successfully")
+        except Exception as e:
+            logger.error(f"Error loading data: {e}")
+            logger.error(traceback.format_exc())
             traceback.print_exc()
 
     def filter_transactions(self, e):
@@ -542,6 +552,7 @@ class DashboardView(ft.UserControl):
 
     def delete_transaction(self, transaction_id):
         def confirm_delete(e):
+            logger.info(f"Deleting transaction {transaction_id}")
             self.db.delete_transaction(transaction_id)
             self.page.dialog.open = False
             self.page.update()
@@ -571,6 +582,7 @@ class DashboardView(ft.UserControl):
 
     def update_chart(self):
         try:
+            logger.debug("Updating chart")
             summary = self.db.get_monthly_summary(self.current_month)
             expenses = summary['expenses']
             
@@ -654,7 +666,9 @@ class DashboardView(ft.UserControl):
             ], spacing=10)
             
             self.update()
-        except Exception:
+            logger.debug("Chart updated")
+        except Exception as e:
+            logger.error(f"Error updating chart: {e}")
             traceback.print_exc()
 
     def _get_payment_info_text(self, t):
