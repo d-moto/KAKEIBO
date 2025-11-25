@@ -16,6 +16,7 @@ logger = logging.getLogger("Kakeibo")
 
 from views.components.credit_card_usage import CreditCardUsage
 from views.components.bank_account_summary import BankAccountSummary
+from views.components.fixed_cost_list import FixedCostList
 
 class DashboardView(ft.UserControl):
     def __init__(self, page: ft.Page, db: Database, on_edit_click=None):
@@ -37,6 +38,7 @@ class DashboardView(ft.UserControl):
         self.expense_chart.expand = True
         self.credit_card_usage = CreditCardUsage()
         self.bank_account_summary = BankAccountSummary()
+        self.fixed_cost_list = FixedCostList()
         self.budget_progress = BudgetProgress(on_set_budget=self.show_budget_dialog)
         
         self.file_picker = ft.FilePicker(on_result=self.export_csv)
@@ -44,8 +46,9 @@ class DashboardView(ft.UserControl):
             self.current_month,
             size=20,
             weight=ft.FontWeight.BOLD,
-            color=ft.colors.WHITE
+            color=AppTheme.colors["text_primary"]
         )
+
 
     def build(self):
         self.lang = self.db.get_setting("language", "en")
@@ -72,6 +75,12 @@ class DashboardView(ft.UserControl):
                             on_click=lambda _: self.file_picker.save_file(allowed_extensions=["csv"], file_name=f"kakeibo_{self.current_month}.csv")
                         ),
                         ft.IconButton(
+                            icon=ft.icons.CAMERA_ALT,
+                            tooltip="Import from Screenshot",
+                            icon_color=AppTheme.colors["text_secondary"],
+                            on_click=self.show_screenshot_import_dialog
+                        ),
+                        ft.IconButton(
                             icon=ft.icons.REPEAT,
                             tooltip="Fixed Costs",
                             icon_color=AppTheme.colors["text_secondary"],
@@ -92,7 +101,8 @@ class DashboardView(ft.UserControl):
             controls=[
                 ft.Container(content=self.expense_chart, expand=True), # Chart takes available space
                 self.bank_account_summary, # Bank accounts
-                self.credit_card_usage # Usage summary below chart
+                self.credit_card_usage, # Usage summary below chart
+                self.fixed_cost_list # Fixed Cost List
             ],
             spacing=20,
             expand=True
@@ -254,6 +264,9 @@ class DashboardView(ft.UserControl):
             # Update Bank Account Summary
             accounts = self.db.get_accounts()
             self.bank_account_summary.update_accounts(accounts, fixed_costs_account_data, cc_payments_account_data)
+            
+            # Update Fixed Cost List
+            self.fixed_cost_list.update_list(fixed_costs_list)
             
             self.month_text.value = self.current_month
             self.month_text.update()
@@ -430,6 +443,31 @@ class DashboardView(ft.UserControl):
 
     def show_fixed_costs_dialog(self, e):
         dlg = FixedCostsDialog(self.page, self.db, on_dismiss=self.load_data)
+        self.page.dialog = dlg
+        dlg.open = True
+        self.page.update()
+
+    def show_screenshot_import_dialog(self, e):
+        from views.components.screenshot_importer import ScreenshotImporter
+        
+        def on_complete():
+            self.page.dialog.open = False
+            self.page.update()
+            self.load_data()
+            snack = ft.SnackBar(ft.Text("Transactions imported successfully!"))
+            self.page.overlay.append(snack)
+            snack.open = True
+            self.page.update()
+
+        importer = ScreenshotImporter(self.page, self.db, on_import_complete=on_complete)
+        
+        dlg = ft.AlertDialog(
+            content=importer,
+            actions=[
+                ft.TextButton("Close", on_click=lambda e: setattr(self.page.dialog, 'open', False) or self.page.update())
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
         self.page.dialog = dlg
         dlg.open = True
         self.page.update()

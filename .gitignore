@@ -13,3 +13,5 @@ wheels/
 *.exe
 *.db
 *.log
+*.log
+*.log.*.1

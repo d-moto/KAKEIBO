@@ -11,10 +11,16 @@ class SettingsView(ft.UserControl):
         super().__init__()
         self.page = page
         self.db = db
+        self.file_picker = ft.FilePicker(on_result=self.export_csv)
+        self.import_picker = ft.FilePicker(on_result=self.import_csv)
 
     def build(self):
         current_encoding = self.db.get_setting("csv_encoding", "Shift-JIS")
         current_lang = self.db.get_setting("language", "en")
+        current_api_key = self.db.get_setting("gemini_api_key", "")
+        
+        # State variable for API Key
+        self.api_key_value = current_api_key
 
         self.language_dropdown = ft.Dropdown(
             label="Language",
@@ -23,9 +29,26 @@ class SettingsView(ft.UserControl):
                 ft.dropdown.Option("ja", "Japanese"),
             ],
             value=current_lang,
-            width=200,
+            expand=True,
             border_color=AppTheme.colors["text_secondary"],
             color=AppTheme.colors["text_primary"],
+        )
+        
+        def on_api_key_change(e):
+            self.api_key_value = e.control.value
+            print(f"DEBUG: API Key changed to: {self.api_key_value}")
+
+        self.api_key_input = ft.TextField(
+            label="Gemini API Key",
+            value=current_api_key,
+            password=True,
+            can_reveal_password=True,
+            expand=True,
+            border_color=AppTheme.colors["text_secondary"],
+            color=AppTheme.colors["text_primary"],
+            helper_text="Required for Screenshot Import feature. Get one from Google AI Studio.",
+            on_change=on_api_key_change,
+            on_submit=self.save_settings # Allow saving by pressing Enter
         )
 
         self.encoding_dropdown = ft.Dropdown(
@@ -36,12 +59,10 @@ class SettingsView(ft.UserControl):
                 ft.dropdown.Option("utf-8-sig"),
             ],
             value=current_encoding,
-            width=200,
+            expand=True,
             border_color=AppTheme.colors["text_secondary"],
             color=AppTheme.colors["text_primary"],
         )
-
-
 
         self.category_budget_inputs = {} # Store references to input fields
         self.category_budgets_list = ft.Column(spacing=10)
@@ -60,137 +81,178 @@ class SettingsView(ft.UserControl):
         )
         self.categories_list = ft.ListView(spacing=5, padding=10)
 
-        self.file_picker = ft.FilePicker(on_result=self.export_csv)
-        self.import_picker = ft.FilePicker(on_result=self.import_csv)
-        self.page.overlay.extend([self.file_picker, self.import_picker])
+        # Helper to create section cards
+        def create_section_card(title, content):
+            return ft.Container(
+                content=ft.Column([
+                    ft.Text(title, style=AppTheme.text_styles["h2"]),
+                    ft.Divider(color=AppTheme.colors["divider"]),
+                    content
+                ], spacing=20),
+                bgcolor=AppTheme.colors["surface"],
+                padding=20,
+                border_radius=10,
+            )
+
+        # General Settings Content
+        general_settings_content = ft.Column([
+            ft.Row([self.language_dropdown, self.encoding_dropdown]),
+            self.api_key_input,
+            ft.Container(height=10),
+            ft.ElevatedButton(
+                "Save API Key & Language",
+                on_click=self.save_settings,
+                style=ft.ButtonStyle(
+                    color=AppTheme.colors["text_primary"],
+                    bgcolor=AppTheme.colors["primary"],
+                    padding=20,
+                    shape=ft.RoundedRectangleBorder(radius=8),
+                ),
+                width=400, # Make it wide
+            )
+        ], spacing=15, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+
+        # Data Management Content
+        data_management_content = ft.Column([
+            ft.Row([
+                ft.ElevatedButton(
+                    "Export All Data",
+                    icon=ft.icons.DOWNLOAD,
+                    on_click=lambda _: self.file_picker.save_file(
+                        allowed_extensions=["csv"], 
+                        file_name=f"kakeibo_all_{datetime.now().strftime('%Y%m%d')}.csv"
+                    ),
+                    style=ft.ButtonStyle(
+                        color=AppTheme.colors["text_primary"],
+                        bgcolor=AppTheme.colors["success"],
+                        shape=ft.RoundedRectangleBorder(radius=10),
+                    ),
+                    expand=True
+                ),
+                ft.ElevatedButton(
+                    "Import from CSV",
+                    icon=ft.icons.UPLOAD,
+                    on_click=lambda _: self.import_picker.pick_files(
+                        allowed_extensions=["csv"], 
+                        allow_multiple=False
+                    ),
+                    style=ft.ButtonStyle(
+                        color=AppTheme.colors["text_primary"],
+                        bgcolor=AppTheme.colors["warning"],
+                        shape=ft.RoundedRectangleBorder(radius=10),
+                    ),
+                    expand=True
+                ),
+            ]),
+            ft.Text("Importing will append data and skip duplicates.", style=AppTheme.text_styles["caption"]),
+        ])
+
+        # Category Budgets Content
+        category_budgets_content = ft.Column([
+            ft.Text("Set default monthly budgets for each category.", style=AppTheme.text_styles["body"]),
+            ft.Container(
+                content=ft.Column([self.category_budgets_list], scroll=ft.ScrollMode.AUTO),
+                height=200, # Limit height
+                padding=10,
+                border=ft.border.all(1, AppTheme.colors["divider"]),
+                border_radius=5,
+            ),
+            ft.ElevatedButton(
+                "Save Category Budgets",
+                on_click=self.save_category_budgets,
+                style=ft.ButtonStyle(
+                    color=AppTheme.colors["text_primary"],
+                    bgcolor=AppTheme.colors["primary"],
+                    shape=ft.RoundedRectangleBorder(radius=10),
+                ),
+            ),
+        ])
+
+        # Category Management Content
+        category_management_content = ft.Column([
+            ft.Row([
+                self.new_category_name,
+                self.new_category_type,
+                ft.IconButton(icon=ft.icons.ADD, on_click=self.add_category, bgcolor=AppTheme.colors["success"], icon_color=AppTheme.colors["text_primary"])
+            ]),
+            ft.Container(
+                content=self.categories_list,
+                height=300,
+                padding=0, 
+            ),
+        ])
+
+        # Fixed Costs Content
+        fixed_costs_content = ft.Column([
+            ft.Text("Automatically add these transactions every month.", style=AppTheme.text_styles["body"]),
+            ft.ElevatedButton(
+                "Manage Fixed Costs",
+                icon=ft.icons.REPEAT,
+                on_click=self.show_fixed_costs_dialog,
+                style=ft.ButtonStyle(
+                    color=AppTheme.colors["text_primary"],
+                    bgcolor=AppTheme.colors["accent"],
+                    shape=ft.RoundedRectangleBorder(radius=10),
+                )
+            )
+        ])
 
         return ft.Container(
             content=ft.Column(
                 [
                     ft.Text("Settings", style=AppTheme.text_styles["h1"]),
-                    ft.Divider(color=AppTheme.colors["divider"]),
-
-                    # Language Settings
-                    ft.Text("Language Settings", style=AppTheme.text_styles["h2"]),
-                    self.language_dropdown,
-                    
-                    ft.Divider(color=AppTheme.colors["divider"]),
-                    
-                    # CSV Settings
-                    ft.Text("CSV Export Settings", style=AppTheme.text_styles["h2"]),
-                    ft.Text("Select the encoding for CSV files. Use 'Shift-JIS' for Excel on Windows.", style=AppTheme.text_styles["body"]),
-                    self.encoding_dropdown,
-                    ft.ElevatedButton(
-                        "Save Settings",
-                        on_click=self.save_settings,
-                        style=ft.ButtonStyle(
-                            color=AppTheme.colors["text_primary"],
-                            bgcolor=AppTheme.colors["primary"],
-                            padding=15,
-                            shape=ft.RoundedRectangleBorder(radius=10),
-                        ),
-                        width=200,
-                    ),
-                    
-                    ft.Divider(color=AppTheme.colors["divider"]),
-
-                    # Data Management
-                    ft.Text("Data Management", style=AppTheme.text_styles["h2"]),
-                    ft.Row([
-                        ft.ElevatedButton(
-                            "Export All Data",
-                            icon=ft.icons.DOWNLOAD,
-                            on_click=lambda _: self.file_picker.save_file(
-                                allowed_extensions=["csv"], 
-                                file_name=f"kakeibo_all_{datetime.now().strftime('%Y%m%d')}.csv"
-                            ),
-                            style=ft.ButtonStyle(
-                                color=AppTheme.colors["text_primary"],
-                                bgcolor=AppTheme.colors["success"],
-                                shape=ft.RoundedRectangleBorder(radius=10),
-                            ),
-                        ),
-                        ft.ElevatedButton(
-                            "Import from CSV",
-                            icon=ft.icons.UPLOAD,
-                            on_click=lambda _: self.import_picker.pick_files(
-                                allowed_extensions=["csv"], 
-                                allow_multiple=False
-                            ),
-                            style=ft.ButtonStyle(
-                                color=AppTheme.colors["text_primary"],
-                                bgcolor=AppTheme.colors["warning"],
-                                shape=ft.RoundedRectangleBorder(radius=10),
-                            ),
-                        ),
-                    ]),
-                    ft.Text("Importing will append data and skip duplicates.", style=AppTheme.text_styles["caption"]),
-
-                    ft.Divider(color=AppTheme.colors["divider"]),
-
-                    # Category Budgets
-                    ft.Text("Category Budgets (Default)", style=AppTheme.text_styles["h2"]),
-                    ft.Text("Set default monthly budgets for each category.", style=AppTheme.text_styles["body"]),
-                    ft.Container(
-                        content=self.category_budgets_list,
-                        bgcolor=AppTheme.colors["surface"],
-                        border_radius=10,
-                        padding=10,
-                    ),
-                    ft.ElevatedButton(
-                        "Save Category Budgets",
-                        on_click=self.save_category_budgets,
-                        style=ft.ButtonStyle(
-                            color=AppTheme.colors["text_primary"],
-                            bgcolor=AppTheme.colors["primary"],
-                            shape=ft.RoundedRectangleBorder(radius=10),
-                        ),
-                    ),
-                    
-                    ft.Divider(color=AppTheme.colors["divider"]),
-
-                    # Category Management
-                    ft.Text("Category Management", style=AppTheme.text_styles["h2"]),
-                    ft.Row([
-                        self.new_category_name,
-                        self.new_category_type,
-                        ft.IconButton(icon=ft.icons.ADD, on_click=self.add_category, bgcolor=AppTheme.colors["success"], icon_color=AppTheme.colors["text_primary"])
-                    ]),
-                    ft.Container(
-                        content=self.categories_list,
-                        height=300,
-                        bgcolor=AppTheme.colors["surface"],
-                        border_radius=10,
-                        padding=0, # Padding handled by ListView
-                    ),
-
-                    ft.Divider(color=AppTheme.colors["divider"]),
-
-                    # Fixed Costs Settings
-                    ft.Text("Fixed Costs (Recurring)", style=AppTheme.text_styles["h2"]),
-                    ft.Text("Automatically add these transactions every month.", style=AppTheme.text_styles["body"]),
-                    ft.ElevatedButton(
-                        "Manage Fixed Costs",
-                        icon=ft.icons.REPEAT,
-                        on_click=self.show_fixed_costs_dialog,
-                        style=ft.ButtonStyle(
-                            color=AppTheme.colors["text_primary"],
-                            bgcolor=AppTheme.colors["accent"],
-                            shape=ft.RoundedRectangleBorder(radius=10),
-                        )
-                    )
+                    create_section_card("General Settings", general_settings_content),
+                    create_section_card("Data Management", data_management_content),
+                    create_section_card("Category Budgets", category_budgets_content),
+                    create_section_card("Category Management", category_management_content),
+                    create_section_card("Fixed Costs", fixed_costs_content),
                 ],
                 spacing=20,
-                horizontal_alignment=ft.CrossAxisAlignment.START,
                 scroll=ft.ScrollMode.AUTO,
             ),
-            padding=30,
+            padding=20,
             expand=True,
         )
 
     def did_mount(self):
+        if self.file_picker not in self.page.overlay:
+            self.page.overlay.append(self.file_picker)
+        if self.import_picker not in self.page.overlay:
+            self.page.overlay.append(self.import_picker)
+        self.page.update()
         self.load_category_budgets()
         self.load_categories()
+
+    def save_settings(self, e):
+        print("DEBUG: save_settings called")
+        try:
+            encoding = self.encoding_dropdown.value
+            lang = self.language_dropdown.value
+            api_key = self.api_key_value # Use state variable
+            
+            print(f"DEBUG: Saving settings. API Key: '{api_key}'")
+            
+            self.db.set_setting("csv_encoding", encoding)
+            self.db.set_setting("language", lang)
+            self.db.set_setting("gemini_api_key", api_key)
+            
+            # Verify save
+            saved_key = self.db.get_setting("gemini_api_key")
+            print(f"DEBUG: Verified saved key: '{saved_key}'")
+            
+            masked_key = saved_key[:4] + "*" * (len(saved_key) - 4) if saved_key and len(saved_key) > 4 else "****"
+            snack = ft.SnackBar(ft.Text(f"Settings saved! API Key: {masked_key}"))
+            self.page.overlay.append(snack)
+            snack.open = True
+            self.page.update()
+        except Exception as ex:
+            print(f"ERROR in save_settings: {ex}")
+            import traceback
+            traceback.print_exc()
+            snack = ft.SnackBar(ft.Text(f"Error saving settings: {ex}"), bgcolor=ft.colors.RED)
+            self.page.overlay.append(snack)
+            snack.open = True
+            self.page.update()
 
     def load_category_budgets(self):
         self.category_budgets_list.controls.clear()
@@ -316,15 +378,7 @@ class SettingsView(ft.UserControl):
         dlg.open = True
         self.page.update()
 
-    def save_settings(self, e):
-        encoding = self.encoding_dropdown.value
-        lang = self.language_dropdown.value
-        self.db.set_setting("csv_encoding", encoding)
-        self.db.set_setting("language", lang)
-        snack = ft.SnackBar(ft.Text("Settings saved! Please restart app to apply language changes."))
-        self.page.overlay.append(snack)
-        snack.open = True
-        self.page.update()
+
 
     def export_csv(self, e: ft.FilePickerResultEvent):
         if e.path:

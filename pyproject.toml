@@ -9,4 +9,5 @@ dependencies = [
     "kaleido>=1.2.0",
     "plotly>=6.5.0",
     "pyinstaller>=6.16.0",
+    "google-generativeai>=0.8.3",
 ]

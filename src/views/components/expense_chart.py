@@ -69,7 +69,7 @@ class ExpenseChart(ft.UserControl):
                         title=f"{int(percentage)}%",
                         title_style=ft.TextStyle(size=12, weight=ft.FontWeight.BOLD, color=ft.colors.WHITE),
                         color=color,
-                        radius=65, # Donut thickness
+                        radius=45, # Donut thickness
                     )
                 )
                 
@@ -84,7 +84,7 @@ class ExpenseChart(ft.UserControl):
             chart = ft.PieChart(
                 sections=sections,
                 sections_space=2,
-                center_space_radius=115, #40, # Hole size
+                center_space_radius=95, #40, # Hole size
                 expand=True,
             )
             
